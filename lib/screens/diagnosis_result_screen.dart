@@ -10,6 +10,7 @@ import '../services/language_service.dart';
 import '../services/notification_service.dart';
 import '../services/plant_safety_service.dart';
 import '../services/plant_repository.dart';
+import '../services/premium_prompt_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/app_button.dart';
@@ -18,6 +19,8 @@ import '../widgets/health_score_card.dart';
 import '../widgets/locked_feature_card.dart';
 import '../widgets/paywall_bottom_sheet.dart';
 import 'plant_detail_screen.dart';
+import 'premium_screen.dart';
+import 'scan_plant_screen.dart';
 
 class DiagnosisResultScreen extends StatefulWidget {
   const DiagnosisResultScreen({super.key});
@@ -44,8 +47,32 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
       if (!mounted) {
         return;
       }
-      unawaited(AdService.instance.showInterstitialAfterDiagnosisIfNeeded());
+      unawaited(_handlePostDiagnosisMonetization());
     });
+  }
+
+  Future<void> _handlePostDiagnosisMonetization() async {
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    if (!mounted) {
+      return;
+    }
+    try {
+      final shouldShowOffer = await PremiumPromptService.instance
+          .shouldShowAfterSuccessfulDiagnosis();
+      if (!mounted) {
+        return;
+      }
+      if (shouldShowOffer) {
+        final openPremium = await showDailyPremiumOfferBottomSheet(context);
+        if (mounted && openPremium) {
+          await Navigator.of(context).pushNamed(PremiumScreen.routeName);
+        }
+        return;
+      }
+      await AdService.instance.showInterstitialAfterDiagnosisIfNeeded();
+    } catch (_) {
+      // Monetization should never block access to a completed diagnosis.
+    }
   }
 
   @override
@@ -87,142 +114,103 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
           const SizedBox(height: 16),
           _ResultSummaryCard(result: result),
           const SizedBox(height: 16),
-          _DiagnosisChecklistCard(result: result),
-          const SizedBox(height: 16),
-          HealthScoreCard(score: result.healthScore, status: result.status),
-          const SizedBox(height: 16),
-          _TrustCard(result: result),
-          const SizedBox(height: 16),
-          if (result.visualFindings.isNotEmpty) ...[
-            _InfoCard(
-              title: context.tr(
-                'Fotoğrafta Gördüklerimiz',
-                'What We Saw in the Photo',
-              ),
-              children: result.visualFindings
-                  .map((item) => _Bullet(item))
-                  .toList(),
-            ),
-          ],
-          const SizedBox(height: 16),
-          _RiskBadgeCard(result: result),
-          const SizedBox(height: 16),
-          _PremiumAnalysisCard(result: result),
-          const SizedBox(height: 16),
-          if (result.careProfile != null) ...[
-            _CareProfileCard(profile: result.careProfile!),
+          if (!result.isPlant) ...[
+            _RetakePhotoCard(result: result),
+            const SizedBox(height: 14),
+          ] else ...[
+            HealthScoreCard(score: result.healthScore, status: result.status),
             const SizedBox(height: 16),
+            _TrustCard(result: result),
+            const SizedBox(height: 16),
+            if (result.visualFindings.isNotEmpty)
+              _InfoCard(
+                title: context.tr(
+                  'Fotoğrafta gördüklerimiz',
+                  'What we saw in the photo',
+                ),
+                children: result.visualFindings
+                    .map((item) => _Bullet(item))
+                    .toList(),
+              ),
+            _LikelyCausesCard(result: result),
+            _RiskBadgeCard(result: result),
+            _InfoCard(
+              title: context.tr('Bugün yapılacaklar', 'What to do today'),
+              children: result.actions.map((item) => _Bullet(item)).toList(),
+            ),
+            _FollowUpTimingCard(result: result),
+            if (result.needsCloseup) _RetakePhotoCard(result: result),
+            _SevenDayPlanCard(result: result),
+            if (result.careProfile != null)
+              _CareProfileCard(profile: result.careProfile!),
+            _DiagnosisSafetyCard(plantName: result.plantName),
+            _InfoCard(
+              title: context.tr('Kaçınılması gerekenler', 'Avoid these'),
+              children: _avoidanceTips(
+                context,
+                result,
+              ).map((item) => _Bullet(item)).toList(),
+            ),
+            _InfoCard(
+              title: context.tr('Güvenli kullanım notu', 'Safety note'),
+              children: [Text(result.safetyNote, style: AppTextStyles.body)],
+            ),
+            if (result.confidenceNote != null &&
+                result.confidenceNote!.trim().isNotEmpty)
+              _InfoCard(
+                title: context.tr('Analizin sınırları', 'Analysis limits'),
+                children: [
+                  Text(result.confidenceNote!, style: AppTextStyles.body),
+                ],
+              ),
+            _PremiumAnalysisCard(result: result),
+            const SizedBox(height: 14),
+            _FollowUpComparisonCard(
+              result: result,
+              isSaving: _isSaving,
+              onSchedule: () => _scheduleReminder(context, result),
+            ),
+            const SizedBox(height: 14),
           ],
-          if (!result.isPlant)
-            _InfoCard(
-              title: context.tr('Görüntüye Göre', 'Based on the Image'),
-              children: [
-                Text(
-                  context.tr(
-                    'Fotoğrafta bitki net algılanamadı. Yakın çekim ile tekrar deneyin.',
-                    'The plant was not detected clearly. Please try again with a close-up photo.',
-                  ),
-                  style: AppTextStyles.body,
+          if (result.isPlant) ...[
+            AppButton(
+              label: _savedPlantId == null
+                  ? context.tr('Bakım Hatırlatması Kur', 'Set Care Reminder')
+                  : context.tr('Hatırlatmaları Yenile', 'Refresh Reminders'),
+              icon: Icons.notifications_active_outlined,
+              onPressed: _isSaving
+                  ? null
+                  : () => _scheduleReminder(context, result),
+            ),
+            const SizedBox(height: 10),
+            AppButton(
+              label: _savedPlantId != null
+                  ? context.tr('Bitkilerime Kaydedildi', 'Saved to My Plants')
+                  : _isSaving
+                  ? context.tr('Kaydediliyor...', 'Saving...')
+                  : context.tr('Bitkilerime Kaydet', 'Save to My Plants'),
+              icon: _savedPlantId != null
+                  ? Icons.check_circle_outline
+                  : _isSaving
+                  ? Icons.hourglass_top_rounded
+                  : Icons.bookmark_add_outlined,
+              onPressed: _isSaving || _savedPlantId != null
+                  ? null
+                  : () => _savePlant(context, result),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  Navigator.of(context).popUntil((route) => route.isFirst),
+              icon: const Icon(Icons.event_repeat),
+              label: Text(
+                context.tr(
+                  '7 Gün Sonra Tekrar Kontrol Et',
+                  'Check Again in 7 Days',
                 ),
-              ],
-            ),
-          _InfoCard(
-            title: context.tr('Muhtemel Bitki', 'Likely Plant'),
-            children: [Text(result.plantName, style: AppTextStyles.title)],
-          ),
-          _DiagnosisSafetyCard(plantName: result.plantName),
-          if (result.symptoms.isNotEmpty)
-            _InfoCard(
-              title: context.tr('Görünen Belirtiler', 'Visible Symptoms'),
-              children: result.symptoms.map((item) => _Bullet(item)).toList(),
-            ),
-          _InfoCard(
-            title: context.tr('Muhtemel Nedenler', 'Likely Causes'),
-            children: result.causes
-                .map((cause) => _Bullet('${cause.title} %${cause.percent}'))
-                .toList(),
-          ),
-          _InfoCard(
-            title: context.tr('Bugün Yapılacaklar', 'What To Do Today'),
-            children: result.actions.map((item) => _Bullet(item)).toList(),
-          ),
-          _InfoCard(
-            title: context.tr('Kaçınılması Gerekenler', 'Avoid These'),
-            children: _avoidanceTips(
-              context,
-              result,
-            ).map((item) => _Bullet(item)).toList(),
-          ),
-          if (result.needsCloseup)
-            _InfoCard(
-              title: context.tr('Yakın Çekim Önerisi', 'Close-up Suggestion'),
-              children: [
-                Text(
-                  context.tr(
-                    'Emin olmak için yaprak ve toprağın yakın çekimini ekleyin.',
-                    'Add close-up photos of the leaves and soil for more certainty.',
-                  ),
-                  style: AppTextStyles.body,
-                ),
-              ],
-            ),
-          _SevenDayPlanCard(result: result),
-          _InfoCard(
-            title: context.tr('Güvenli Not', 'Safety Note'),
-            children: [Text(result.safetyNote, style: AppTextStyles.body)],
-          ),
-          if (result.confidenceNote != null &&
-              result.confidenceNote!.trim().isNotEmpty)
-            _InfoCard(
-              title: context.tr('Analiz Güveni', 'Analysis Confidence'),
-              children: [
-                Text(result.confidenceNote!, style: AppTextStyles.body),
-              ],
-            ),
-          const SizedBox(height: 14),
-          _FollowUpComparisonCard(
-            result: result,
-            isSaving: _isSaving,
-            onSchedule: () => _scheduleReminder(context, result),
-          ),
-          const SizedBox(height: 14),
-          AppButton(
-            label: _savedPlantId == null
-                ? context.tr('Bakım Hatırlatması Kur', 'Set Care Reminder')
-                : context.tr('Hatırlatmaları Yenile', 'Refresh Reminders'),
-            icon: Icons.notifications_active_outlined,
-            onPressed: _isSaving
-                ? null
-                : () => _scheduleReminder(context, result),
-          ),
-          const SizedBox(height: 10),
-          AppButton(
-            label: _savedPlantId != null
-                ? context.tr('Bitkilerime Kaydedildi', 'Saved to My Plants')
-                : _isSaving
-                ? context.tr('Kaydediliyor...', 'Saving...')
-                : context.tr('Bitkilerime Kaydet', 'Save to My Plants'),
-            icon: _savedPlantId != null
-                ? Icons.check_circle_outline
-                : _isSaving
-                ? Icons.hourglass_top_rounded
-                : Icons.bookmark_add_outlined,
-            onPressed: _isSaving || _savedPlantId != null
-                ? null
-                : () => _savePlant(context, result),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () =>
-                Navigator.of(context).popUntil((route) => route.isFirst),
-            icon: const Icon(Icons.event_repeat),
-            label: Text(
-              context.tr(
-                '7 Gün Sonra Tekrar Kontrol Et',
-                'Check Again in 7 Days',
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -362,11 +350,16 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
         _savedPlantId = plant.id;
       }
       final tasks = await PlantRepository().getCareTasks();
-      await NotificationService.instance.scheduleCareReminders(tasks);
+      final scheduled = await NotificationService.instance
+          .scheduleCareReminders(tasks, requestPermissionIfNeeded: true);
       if (!context.mounted) {
         return;
       }
       setState(() => _isSaving = false);
+      if (!scheduled) {
+        await _showNotificationPermissionDialog(context);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -395,6 +388,42 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
+  }
+
+  Future<void> _showNotificationPermissionDialog(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(
+          Icons.notifications_off_outlined,
+          color: AppColors.warning,
+          size: 34,
+        ),
+        title: Text(
+          context.tr('Bildirim izni kapalı', 'Notifications are disabled'),
+        ),
+        content: Text(
+          context.tr(
+            'Bakım planı kaydedildi ancak hatırlatma gösterebilmek için bildirim iznini telefon ayarlarından açmalısın.',
+            'The care plan was saved, but notifications must be enabled in phone settings to show reminders.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(context.tr('Şimdi değil', 'Not now')),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await NotificationService.instance.openNotificationSettings();
+            },
+            icon: const Icon(Icons.settings_outlined),
+            label: Text(context.tr('Ayarlara git', 'Open settings')),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool?> _showSavedSheet(BuildContext context) {
@@ -467,82 +496,55 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
   }
 }
 
-class _DiagnosisChecklistCard extends StatelessWidget {
-  const _DiagnosisChecklistCard({required this.result});
+class _RetakePhotoCard extends StatelessWidget {
+  const _RetakePhotoCard({required this.result});
 
   final DiagnosisResult result;
 
   @override
   Widget build(BuildContext context) {
-    final topCause = result.causes.isNotEmpty
-        ? '${result.causes.first.title} %${result.causes.first.percent}'
-        : context.tr(
-            'Net neden için yakın takip gerekli',
-            'Close follow-up is needed for a clearer cause',
-          );
-    final photoEvidence = result.visualFindings.isNotEmpty
-        ? result.visualFindings.first
-        : (result.symptoms.isNotEmpty
-              ? result.symptoms.first
-              : context.tr(
-                  'Fotoğrafta net bir hastalık izi seçilmiyor',
-                  'No clear disease mark is visible in the photo',
-                ));
-    final firstAction = result.actions.isNotEmpty
-        ? result.actions.first
-        : context.tr(
-            'Bugün fotoğrafı aynı açıdan saklayıp bitkiyi gözlemle',
-            'Save today’s photo from the same angle and observe the plant',
-          );
-    final followUp = result.sevenDayPlan.length >= 7
-        ? result.sevenDayPlan.last
-        : context.tr(
-            '7 gün sonra aynı açıyla karşılaştırmalı kontrol',
-            'Compare again from the same angle in 7 days',
-          );
-
     return AppCard(
-      color: AppColors.mint.withValues(alpha: .74),
+      color: AppColors.warmCream,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.fact_check_outlined, color: AppColors.green),
+              const Icon(Icons.center_focus_strong, color: AppColors.warning),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  context.tr('Teşhis akışı', 'Diagnosis Flow'),
+                  result.isPlant
+                      ? context.tr(
+                          'Sonucu güçlendirelim',
+                          'Let’s strengthen the result',
+                        )
+                      : context.tr(
+                          'Bitkiyi yeniden fotoğrafla',
+                          'Photograph the plant again',
+                        ),
                   style: AppTextStyles.section,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          Text(
+            context.tr(
+              'Genel bitki, belirti yakın çekimi ve toprak/saksı dibini ayrı ayrı çek. Net olmayan görüntüde yüksek güvenli sonuç gösterilmez.',
+              'Take separate photos of the full plant, a symptom close-up and the soil/pot base. High-confidence results are not shown for unclear images.',
+            ),
+            style: AppTextStyles.body,
+          ),
           const SizedBox(height: 14),
-          _DiagnosisStepRow(
-            number: '1',
-            title: context.tr('Bitki türü', 'Plant type'),
-            value: result.plantName,
-          ),
-          _DiagnosisStepRow(
-            number: '2',
-            title: context.tr('Fotoğrafta görülen', 'Seen in photo'),
-            value: photoEvidence,
-          ),
-          _DiagnosisStepRow(
-            number: '3',
-            title: context.tr('En güçlü ihtimal', 'Strongest possibility'),
-            value: topCause,
-          ),
-          _DiagnosisStepRow(
-            number: '4',
-            title: context.tr('İlk hareket', 'First action'),
-            value: firstAction,
-          ),
-          _DiagnosisStepRow(
-            number: '5',
-            title: context.tr('Takip', 'Follow-up'),
-            value: followUp,
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () =>
+                  Navigator.of(context).pushNamed(ScanPlantScreen.routeName),
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: Text(context.tr('Yeni fotoğraf çek', 'Take new photos')),
+            ),
           ),
         ],
       ),
@@ -550,60 +552,103 @@ class _DiagnosisChecklistCard extends StatelessWidget {
   }
 }
 
-class _DiagnosisStepRow extends StatelessWidget {
-  const _DiagnosisStepRow({
-    required this.number,
-    required this.title,
-    required this.value,
-  });
+class _LikelyCausesCard extends StatelessWidget {
+  const _LikelyCausesCard({required this.result});
 
-  final String number;
-  final String title;
-  final String value;
+  final DiagnosisResult result;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 25,
-            height: 25,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.darkGreen,
-              borderRadius: BorderRadius.circular(999),
+    final causes = result.causes.take(3).toList();
+    return _InfoCard(
+      title: context.tr('Olası nedenler', 'Possible causes'),
+      children: [
+        Text(
+          context.tr(
+            'Yüzdeler, görünen kanıtlar içindeki göreli AI olasılığını gösterir; doğruluk garantisi değildir.',
+            'Percentages show relative AI likelihood among the visible clues; they are not an accuracy guarantee.',
+          ),
+          style: AppTextStyles.muted,
+        ),
+        const SizedBox(height: 12),
+        if (causes.isEmpty)
+          Text(
+            context.tr(
+              'Net bir neden seçilemedi; değişimi takip et.',
+              'No clear cause was identified; monitor changes.',
             ),
-            child: Text(
-              number,
-              style: AppTextStyles.muted.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
+            style: AppTextStyles.body,
+          )
+        else
+          ...causes.map(
+            (cause) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Expanded(child: Text(cause.title, style: AppTextStyles.body)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.mint,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '%${cause.percent}',
+                      style: AppTextStyles.muted.copyWith(
+                        color: AppColors.darkGreen,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyles.muted.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.darkGreen,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(value, style: AppTextStyles.body),
-              ],
+      ],
+    );
+  }
+}
+
+class _FollowUpTimingCard extends StatelessWidget {
+  const _FollowUpTimingCard({required this.result});
+
+  final DiagnosisResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final urgent = result.healthScore < 50;
+    final timing = urgent
+        ? context.tr(
+            '24 saat içinde aynı açıdan kontrol et. Hızlı yayılma, kötü koku veya gövde yumuşaması varsa uzman desteği al.',
+            'Check again from the same angle within 24 hours. Seek expert help if spreading, odor or stem softening develops.',
+          )
+        : result.healthScore < 80
+        ? context.tr(
+            '3 gün sonra aynı açıdan fotoğrafla karşılaştır; belirti büyürse daha erken yeni analiz al.',
+            'Compare with a same-angle photo in 3 days; run a new analysis sooner if the symptom grows.',
+          )
+        : context.tr(
+            '7 gün sonra aynı açıdan fotoğrafla karşılaştır; belirgin değişiklik yoksa mevcut bakım ritmini koru.',
+            'Compare with a same-angle photo in 7 days; keep the current care rhythm if there is no clear change.',
+          );
+    return _InfoCard(
+      title: context.tr('Ne zaman tekrar kontrol edilmeli?', 'When to recheck'),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              urgent ? Icons.priority_high_rounded : Icons.event_repeat,
+              color: urgent ? AppColors.critical : AppColors.green,
             ),
-          ),
-        ],
-      ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(timing, style: AppTextStyles.body)),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -1404,7 +1449,9 @@ class _ResultSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tone = result.healthScore >= 80
+    final tone = !result.isPlant
+        ? AppColors.warning
+        : result.healthScore >= 80
         ? AppColors.green
         : result.healthScore >= 50
         ? AppColors.warning
@@ -1439,22 +1486,45 @@ class _ResultSummaryCard extends StatelessWidget {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: [
-              _SummaryPill(
-                label: context.tr(
-                  '${result.healthScore}/100 sağlık',
-                  '${result.healthScore}/100 health',
-                ),
-                color: tone,
-              ),
-              _SummaryPill(label: result.status, color: tone),
-              _SummaryPill(
-                label: result.needsCloseup
-                    ? context.tr('Yakın çekim önerilir', 'Close-up suggested')
-                    : context.tr('Görüntü yeterli', 'Image is sufficient'),
-                color: AppColors.lightGreen,
-              ),
-            ],
+            children: result.isPlant
+                ? [
+                    _SummaryPill(
+                      label: context.tr(
+                        '${result.healthScore}/100 sağlık',
+                        '${result.healthScore}/100 health',
+                      ),
+                      color: tone,
+                    ),
+                    _SummaryPill(label: result.status, color: tone),
+                    _SummaryPill(
+                      label: result.needsCloseup
+                          ? context.tr(
+                              'Yakın çekim önerilir',
+                              'Close-up suggested',
+                            )
+                          : context.tr(
+                              'Görüntü yeterli',
+                              'Image is sufficient',
+                            ),
+                      color: AppColors.lightGreen,
+                    ),
+                  ]
+                : [
+                    _SummaryPill(
+                      label: context.tr(
+                        'Yeni fotoğraf gerekli',
+                        'New photos required',
+                      ),
+                      color: tone,
+                    ),
+                    _SummaryPill(
+                      label: context.tr(
+                        'Sağlık skoru oluşturulmadı',
+                        'No health score generated',
+                      ),
+                      color: AppColors.lightGreen,
+                    ),
+                  ],
           ),
         ],
       ),

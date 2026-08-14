@@ -8,7 +8,15 @@ import {getCareTemplate} from "./services/diagnosis_template_service";
 import {EntitlementService, userIndexCollection, usersCollection} from "./services/entitlement_service";
 import {GeminiService} from "./services/gemini_service";
 import {verifyGooglePlaySubscription} from "./services/google_play_billing_service";
-import {buildPlantActionPlan} from "./services/plant_action_plan_service";
+import {
+  appStoreTransactionsCollection,
+  verifyAppStoreSubscription,
+} from "./services/app_store_billing_service";
+import {
+  buildPlantActionPlan,
+  looksRepeatedOrGeneric,
+  personalizePlantActionPlan,
+} from "./services/plant_action_plan_service";
 import {
   findPlantCareEntry,
   plantCareKind,
@@ -41,6 +49,14 @@ export const analyzePlantPhoto = onCall({region: "europe-west1", timeoutSeconds:
   try {
     const input = normalizeInput(request.data);
     const responseLanguage = input.answers?.language === "en" ? "en" : "tr";
+    const diagnosisId = input.requestId ?
+      createHash("sha256").update(`${userId}:${input.requestId}`).digest("hex").slice(0, 40) :
+      db.collection("_").doc().id;
+    const diagnosisRef = db.collection(usersCollection).doc(userId).collection("diagnoses").doc(diagnosisId);
+    const existingDiagnosis = await diagnosisRef.get();
+    if (existingDiagnosis.exists) {
+      return storedDiagnosisResponse(existingDiagnosis.data() ?? {});
+    }
     await entitlementService.assertCanAnalyze(userId, authProfile(request.auth?.token));
     const analysisTier = analysisGeminiModel.includes("pro") ? "pro" : "standard";
     const diagnosis = await new GeminiService(
@@ -59,23 +75,38 @@ export const analyzePlantPhoto = onCall({region: "europe-west1", timeoutSeconds:
       primaryCause?.code ?? "unknown",
       plantCare,
     );
-    const actionPlan = responseLanguage === "en" ? {
-      visualFindings: diagnosis.visualFindings,
-      symptoms: diagnosis.symptoms,
-      quickActions: diagnosis.quickActions,
-      sevenDayPlan: diagnosis.sevenDayPlan,
-      safetyNote: diagnosis.safetyNote,
-      confidenceNote: diagnosis.confidenceNote,
-    } : buildPlantActionPlan({
+    const actionContext = {
       plantName: plantGuess,
       cause: primaryCause?.code ?? "unknown",
       answers: input.answers,
       plantCare,
       visualFindings: evidenceFindings,
       possibleCauses,
-    });
+    };
+    const templateActionPlan = buildPlantActionPlan(actionContext);
+    const selectedActionPlan = responseLanguage === "en" ? {
+      visualFindings: diagnosis.visualFindings,
+      symptoms: diagnosis.symptoms,
+      quickActions: diagnosis.quickActions,
+      sevenDayPlan: diagnosis.sevenDayPlan,
+      safetyNote: diagnosis.safetyNote,
+      confidenceNote: diagnosis.confidenceNote,
+    } : {
+      ...templateActionPlan,
+      quickActions: looksRepeatedOrGeneric(
+        diagnosis.quickActions,
+        plantGuess,
+        evidenceFindings,
+      ) ? templateActionPlan.quickActions : diagnosis.quickActions,
+      sevenDayPlan: diagnosis.sevenDayPlan.length === 7 &&
+        !looksRepeatedOrGeneric(diagnosis.sevenDayPlan, plantGuess, evidenceFindings) ?
+        diagnosis.sevenDayPlan : templateActionPlan.sevenDayPlan,
+      confidenceNote: diagnosis.confidenceNote ?? templateActionPlan.confidenceNote,
+    };
+    const actionPlan = responseLanguage === "tr" ?
+      personalizePlantActionPlan(selectedActionPlan, actionContext) :
+      selectedActionPlan;
 
-    const diagnosisRef = db.collection(usersCollection).doc(userId).collection("diagnoses").doc();
     const storedImage = await uploadDiagnosisImage(userId, diagnosisRef.id, input);
     const response = {
       id: diagnosisRef.id,
@@ -99,11 +130,19 @@ export const analyzePlantPhoto = onCall({region: "europe-west1", timeoutSeconds:
       confidenceNote: actionPlan.confidenceNote ?? diagnosis.confidenceNote ?? null,
       source: "gemini",
       analysisTier,
+      requestId: input.requestId ?? null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    await diagnosisRef.set(response);
-    await entitlementService.consumeCredit(userId);
+    const created = await entitlementService.consumeCreditAndCreateDiagnosis(
+      userId,
+      diagnosisRef,
+      response,
+    );
+    if (!created) {
+      const storedDiagnosis = await diagnosisRef.get();
+      return storedDiagnosisResponse(storedDiagnosis.data() ?? {});
+    }
     await db.collection(usersCollection).doc(userId).set(
       {
         diagnosisCount: FieldValue.increment(1),
@@ -537,7 +576,12 @@ export const verifyGooglePlayPurchase = onCall({region: "europe-west1", timeoutS
       ...(!tokenSnapshot.exists ? {createdAt: FieldValue.serverTimestamp()} : {}),
     }, {merge: true});
   });
-  const entitlements = await entitlementService.updatePremiumStatus(userId, verified.plan, verified.active);
+  const entitlements = await entitlementService.updatePremiumStatus(
+    userId,
+    verified.plan,
+    verified.active,
+    verified.expiryTime,
+  );
   await entitlementService.updateAdminIndex(userId, entitlements, {
     lastGooglePlayPurchaseAt: FieldValue.serverTimestamp(),
     lastGooglePlayProductId: verified.productId,
@@ -556,6 +600,101 @@ export const verifyGooglePlayPurchase = onCall({region: "europe-west1", timeoutS
       autoRenewEnabled: verified.autoRenewEnabled,
     },
   };
+});
+
+export const verifyAppStorePurchase = onCall({region: "europe-west1", timeoutSeconds: 30, invoker: publicInvoker}, async (request) => {
+  const userId = request.auth?.uid;
+  if (!userId) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const data = isRecord(request.data) ? request.data : {};
+  const productId = typeof data.productId === "string" ? data.productId.trim() : "";
+  const signedTransaction = typeof data.signedTransaction === "string" ? data.signedTransaction.trim() : "";
+  if (!productId || !signedTransaction) {
+    throw new HttpsError("invalid-argument", "productId and signedTransaction are required.");
+  }
+
+  const verified = await verifyAppStoreSubscription(productId, signedTransaction);
+  const transactionDocumentId = createHash("sha256")
+    .update(verified.originalTransactionId)
+    .digest("hex");
+  const transactionRef = db.collection(appStoreTransactionsCollection).doc(transactionDocumentId);
+  await db.runTransaction(async (transaction) => {
+    const transactionSnapshot = await transaction.get(transactionRef);
+    const ownerUserId = transactionSnapshot.data()?.userId;
+    if (typeof ownerUserId === "string" && ownerUserId !== userId) {
+      throw new HttpsError("permission-denied", "This App Store purchase is already linked to another account.");
+    }
+    transaction.set(transactionRef, {
+      userId,
+      originalTransactionId: verified.originalTransactionId,
+      latestTransactionId: verified.transactionId,
+      productId: verified.productId,
+      plan: verified.plan,
+      subscriptionActive: verified.active,
+      subscriptionState: verified.subscriptionState,
+      expiryTime: verified.expiryTime,
+      environment: verified.environment,
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(!transactionSnapshot.exists ? {createdAt: FieldValue.serverTimestamp()} : {}),
+    }, {merge: true});
+  });
+
+  const entitlements = await entitlementService.updatePremiumStatus(
+    userId,
+    verified.plan,
+    verified.active,
+    verified.expiryTime,
+  );
+  await entitlementService.updateAdminIndex(userId, entitlements, {
+    lastAppStorePurchaseAt: FieldValue.serverTimestamp(),
+    lastAppStoreProductId: verified.productId,
+    lastAppStoreSubscriptionState: verified.subscriptionState,
+  });
+
+  return {
+    success: true,
+    entitlements,
+    purchase: {
+      productId: verified.productId,
+      plan: verified.plan,
+      subscriptionActive: verified.active,
+      subscriptionState: verified.subscriptionState,
+      expiryTime: verified.expiryTime,
+      environment: verified.environment,
+    },
+  };
+});
+
+export const deleteCurrentUserAccount = onCall({region: "europe-west1", timeoutSeconds: 60, memory: "512MiB", invoker: publicInvoker}, async (request) => {
+  const userId = request.auth?.uid;
+  if (!userId) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const userRef = db.collection(usersCollection).doc(userId);
+  const [userSnapshot, authUser] = await Promise.all([
+    userRef.get(),
+    admin.auth().getUser(userId),
+  ]);
+  const storedEmail = typeof userSnapshot.data()?.email === "string" ?
+    String(userSnapshot.data()?.email).trim().toLowerCase() : "";
+  const authEmail = authUser.email?.trim().toLowerCase() ?? "";
+
+  await admin.storage().bucket().deleteFiles({prefix: `users/${userId}/`, force: true});
+  await Promise.all([
+    deleteDocumentsForUser(purchaseTokensCollection, userId),
+    deleteDocumentsForUser(appStoreTransactionsCollection, userId),
+  ]);
+  for (const email of new Set([storedEmail, authEmail])) {
+    if (email) {
+      await db.collection(userIndexCollection).doc(email).delete();
+    }
+  }
+  await db.recursiveDelete(userRef);
+  await admin.auth().deleteUser(userId);
+  return {success: true};
 });
 
 export const adminListUsers = onCall({region: "europe-west1", invoker: publicInvoker}, async (request) => {
@@ -747,6 +886,8 @@ function normalizeInput(data: unknown): AnalyzePlantPhotoInput {
     data.imageUrls.filter((item): item is string => typeof item === "string" && item.length > 0).slice(0, 3) :
     undefined;
   const mimeType = typeof data.mimeType === "string" ? data.mimeType : "image/jpeg";
+  const requestId = typeof data.requestId === "string" &&
+    /^[a-zA-Z0-9-]{16,128}$/.test(data.requestId) ? data.requestId : undefined;
   const answers = isRecord(data.answers) ? data.answers : {};
   const hasImageList = (imageBase64List?.length ?? 0) > 0 || (imageUrls?.length ?? 0) > 0;
 
@@ -761,11 +902,35 @@ function normalizeInput(data: unknown): AnalyzePlantPhotoInput {
     throw new HttpsError("invalid-argument", "Images are too large.");
   }
 
-  return {imageBase64, imageBase64List, imageUrl, imageUrls, mimeType, answers};
+  return {requestId, imageBase64, imageBase64List, imageUrl, imageUrls, mimeType, answers};
+}
+
+function storedDiagnosisResponse(data: Record<string, unknown>): Record<string, unknown> {
+  const createdAt = data.createdAt;
+  return {
+    ...data,
+    createdAt: createdAt instanceof admin.firestore.Timestamp ?
+      createdAt.toDate().toISOString() :
+      typeof createdAt === "string" ? createdAt : new Date().toISOString(),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+async function deleteDocumentsForUser(collectionName: string, userId: string): Promise<void> {
+  while (true) {
+    const snapshot = await db.collection(collectionName).where("userId", "==", userId).limit(400).get();
+    if (snapshot.empty) {
+      return;
+    }
+    const batch = db.batch();
+    for (const document of snapshot.docs) {
+      batch.delete(document.ref);
+    }
+    await batch.commit();
+  }
 }
 
 function optionalBoundedInt(value: unknown, min: number, max: number): number | undefined {

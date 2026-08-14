@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -78,6 +79,31 @@ class AuthService {
     }
   }
 
+  Future<UserCredential> signInWithApple() async {
+    try {
+      final firebaseReady = await FirebaseBootstrap.ensureInitialized();
+      if (!firebaseReady) {
+        throw const AuthException('Firebase bağlantısı hazır değil.');
+      }
+
+      final provider = AppleAuthProvider()
+        ..addScope('email')
+        ..addScope('name');
+      return _auth.signInWithProvider(provider);
+    } on AuthException {
+      rethrow;
+    } on FirebaseAuthException catch (error) {
+      if (error.code == 'web-context-cancelled' ||
+          error.code == 'canceled' ||
+          error.code == 'popup-closed-by-user') {
+        throw const AuthException(
+          'Apple ile giriş tamamlanmadı. Tekrar deneyebilirsin.',
+        );
+      }
+      throw AuthException(_firebaseAuthErrorMessage(error));
+    }
+  }
+
   Future<UserCredential> signInWithEmulatorTestUser() async {
     if (!DevAuthConfig.allowEmulatorLogin) {
       throw const AuthException('Emülatör test girişi bu build içinde kapalı.');
@@ -98,6 +124,25 @@ class AuthService {
       debugPrint('Google disconnect skipped: $error');
     }
     await _auth.signOut();
+  }
+
+  Future<void> deleteCurrentAccount() async {
+    final firebaseReady = await FirebaseBootstrap.ensureInitialized();
+    if (!firebaseReady || currentUser == null) {
+      throw const AuthException('Silinecek oturum bulunamadı.');
+    }
+
+    try {
+      await FirebaseFunctions.instanceFor(
+        region: 'europe-west1',
+      ).httpsCallable('deleteCurrentUserAccount').call<Map<String, dynamic>>();
+      await _auth.signOut();
+    } on FirebaseFunctionsException catch (error) {
+      debugPrint('Account deletion failed: ${error.code} ${error.message}');
+      throw const AuthException(
+        'Hesap şu anda silinemedi. İnternet bağlantını kontrol edip tekrar dene.',
+      );
+    }
   }
 }
 
@@ -137,7 +182,9 @@ String _firebaseAuthErrorMessage(FirebaseAuthException error) {
     'account-exists-with-different-credential' =>
       'Bu e-posta farklı bir giriş yöntemiyle kayıtlı görünüyor.',
     'invalid-credential' || 'credential-already-in-use' =>
-      'Google oturumu doğrulanamadı. Lütfen tekrar giriş yap.',
-    _ => 'Google ile giriş şu anda tamamlanamadı. Lütfen tekrar dene.',
+      'Oturum doğrulanamadı. Lütfen tekrar giriş yap.',
+    'operation-not-allowed' =>
+      'Bu giriş yöntemi henüz etkin değil. Lütfen uygulamayı güncelleyip tekrar dene.',
+    _ => 'Giriş şu anda tamamlanamadı. Lütfen tekrar dene.',
   };
 }

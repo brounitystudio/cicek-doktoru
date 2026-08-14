@@ -24,6 +24,7 @@ import 'screens/sign_in_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/water_calculator_screen.dart';
 import 'services/firebase_bootstrap.dart';
+import 'services/ad_service.dart';
 import 'services/language_service.dart';
 import 'services/notification_service.dart';
 import 'services/plant_repository.dart';
@@ -31,27 +32,79 @@ import 'services/purchase_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/premium_bottom_nav.dart';
 
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await FirebaseBootstrap.ensureInitialized();
   await LanguageService.instance.initialize();
   PurchaseService.instance.initialize();
+  unawaited(
+    AdService.instance.initialize().catchError((Object error) {
+      debugPrint('Ad initialization skipped: $error');
+      return false;
+    }),
+  );
   runApp(const CicekDoktoruApp());
   unawaited(
-    NotificationService.instance.initialize().catchError((Object error) {
-      debugPrint('Notification initialization skipped: $error');
-    }),
+    NotificationService.instance
+        .initialize(onNotificationTap: _openNotificationDestination)
+        .catchError((Object error) {
+          debugPrint('Notification initialization skipped: $error');
+        }),
   );
 }
 
-class CicekDoktoruApp extends StatelessWidget {
+void _openNotificationDestination(NotificationNavigationIntent intent) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final navigator = appNavigatorKey.currentState;
+    if (navigator == null) {
+      return;
+    }
+    navigator.pushNamedAndRemoveUntil(
+      MainShell.routeName,
+      (route) => false,
+      arguments: intent,
+    );
+  });
+}
+
+class CicekDoktoruApp extends StatefulWidget {
   const CicekDoktoruApp({super.key});
+
+  @override
+  State<CicekDoktoruApp> createState() => _CicekDoktoruAppState();
+}
+
+class _CicekDoktoruAppState extends State<CicekDoktoruApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      AdService.instance.markAppBackgrounded();
+    } else if (state == AppLifecycleState.resumed) {
+      unawaited(AdService.instance.showAppOpenOnForegroundIfEligible());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: LanguageService.instance,
       builder: (context, _) => MaterialApp(
+        navigatorKey: appNavigatorKey,
         title: LanguageService.instance.text('Çiçek Doktoru', 'Plant Doctor'),
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
@@ -102,14 +155,45 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
+  bool _notificationArgsApplied = false;
 
-  final _pages = const [
-    HomeScreen(),
-    ScanPlantScreen(),
-    MyPlantsScreen(),
-    CareCalendarScreen(),
-    SettingsScreen(),
-  ];
+  List<Widget> _pages = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = const [
+      HomeScreen(),
+      ScanPlantScreen(),
+      MyPlantsScreen(),
+      CareCalendarScreen(),
+      SettingsScreen(),
+    ];
+    unawaited(AdService.instance.registerAuthenticatedLaunch());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_notificationArgsApplied) {
+      return;
+    }
+    _notificationArgsApplied = true;
+    final intent = ModalRoute.of(context)?.settings.arguments;
+    if (intent is NotificationNavigationIntent) {
+      _index = 3;
+      _pages = [
+        const HomeScreen(),
+        const ScanPlantScreen(),
+        const MyPlantsScreen(),
+        CareCalendarScreen(
+          focusTaskId: intent.taskId,
+          focusPlantId: intent.plantId,
+        ),
+        const SettingsScreen(),
+      ];
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

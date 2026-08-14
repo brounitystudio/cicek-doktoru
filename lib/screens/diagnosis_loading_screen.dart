@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
@@ -26,10 +27,12 @@ class _DiagnosisLoadingScreenState extends State<DiagnosisLoadingScreen>
   late final Timer _factTimer;
   int _messageIndex = 0;
   int _factIndex = 0;
+  late final String _requestId;
 
   @override
   void initState() {
     super.initState();
+    _requestId = _newRequestId();
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -62,6 +65,7 @@ class _DiagnosisLoadingScreenState extends State<DiagnosisLoadingScreen>
               symptomType: 'Sararma / solma',
               symptomDuration: 'Birkaç gündür',
             ),
+        requestId: _requestId,
       );
       await Future<void>.delayed(const Duration(milliseconds: 900));
       if (!mounted) {
@@ -124,6 +128,15 @@ class _DiagnosisLoadingScreenState extends State<DiagnosisLoadingScreen>
         Navigator.of(context).pop();
       }
     }
+  }
+
+  String _newRequestId() {
+    final random = Random.secure();
+    final entropy = List<int>.generate(
+      16,
+      (_) => random.nextInt(256),
+    ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+    return '${DateTime.now().microsecondsSinceEpoch}-$entropy';
   }
 
   @override

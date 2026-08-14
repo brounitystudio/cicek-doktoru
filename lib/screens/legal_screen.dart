@@ -25,11 +25,12 @@ class LegalScreen extends StatelessWidget {
               _LegalSection(
                 title: 'Gizlilik Politikası',
                 body: [
-                  'Çiçek Doktoru; Google hesabınla giriş yaptığında ad, e-posta, profil fotoğrafı, uygulama kullanım bilgileri, teşhis sonuçları, kaydettiğin bitkiler, bakım görevleri ve yüklediğin bitki fotoğraflarını saklayabilir.',
+                  'Çiçek Doktoru; Apple veya Google hesabınla giriş yaptığında ad, e-posta, profil fotoğrafı, uygulama kullanım bilgileri, teşhis sonuçları, kaydettiğin bitkiler, bakım görevleri ve yüklediğin bitki fotoğraflarını saklayabilir.',
                   'Bitki fotoğrafları ve teşhis sonuçları Firebase altyapısında hesabınla ilişkilendirilir. Bu veriler uygulama deneyimini sürdürmek, bitki geçmişini göstermek, bakım hatırlatıcıları oluşturmak ve premium haklarını yönetmek için kullanılır.',
                   'Yapay zekâ analizleri için fotoğraf ve bakım cevapları güvenli backend üzerinden AI analiz servisine gönderilebilir. Analiz sonuçları kesin teşhis değildir.',
                   'Reklam gösterimi ve ödüllü reklam hakları için AdMob gibi üçüncü taraf servisler kullanılabilir. Premium kullanıcılar için reklam gösterimi kapatılabilir.',
-                  'Verilerini silmek veya hesapla ilgili destek almak için uygulama geliştiricisine ulaşabilirsin. Yayın öncesinde bu metin, şirket bilgileri ve iletişim adresiyle tamamlanmalıdır.',
+                  'Satın alma ve abonelik bilgileri, premium haklarını doğrulamak ve yönetmek amacıyla App Store veya Google Play ile güvenli biçimde doğrulanabilir.',
+                  'Hesabını ve uygulamayla ilişkilendirilmiş verilerini Profil > Hesabı ve Verileri Sil adımından kalıcı olarak silebilirsin. Gizlilik hakkında bilgi almak için brounitystudio@gmail.com adresinden Brounity Studio ile iletişime geçebilirsin.',
                 ],
               ),
               _LegalSection(
@@ -40,6 +41,14 @@ class LegalScreen extends StatelessWidget {
                   'Ücretsiz kullanıcılar belirli analiz, reklam ödülü ve kayıt limitleriyle uygulamayı kullanabilir. Premium haklar satın alma koşullarına ve platform kurallarına göre değişebilir.',
                   'Kullanıcı; yüklediği fotoğrafların kendisine ait veya kullanmaya yetkili olduğu içerikler olduğunu kabul eder.',
                   'Hizmet; teknik bakım, üçüncü taraf servis kesintisi, faturalandırma veya bağlantı sorunları nedeniyle geçici olarak aksayabilir.',
+                ],
+              ),
+              _LegalSection(
+                title: 'İletişim ve Veri Talepleri',
+                body: [
+                  'Veri sorumlusu ve uygulama geliştiricisi: Brounity Studio.',
+                  'İletişim: brounitystudio@gmail.com',
+                  'Erişim ve düzeltme taleplerinde hesabında kullandığın e-posta adresini belirtmen istenebilir. Hesap silme işlemini uygulamadaki Profil ekranından doğrudan başlatabilirsin.',
                 ],
               ),
               _LegalSection(
@@ -66,7 +75,7 @@ class _LegalIntro extends StatelessWidget {
     return AppCard(
       color: AppColors.darkGreen,
       child: Text(
-        'Bu metinler yayın öncesi taslak niteliğindedir. Play Store yayınına çıkmadan önce şirket bilgileri, iletişim adresi ve hukuki kontrol ile son haline getirilmelidir.',
+        'Çiçek Doktoru, bitki bakım kararlarını desteklemek için fotoğraf ve verdiğin bakım bilgilerini kullanır. Verilerin ve kullanım seçeneklerin hakkında özet bilgileri aşağıda bulabilirsin.',
         style: AppTextStyles.body.copyWith(color: Colors.white),
       ),
     );

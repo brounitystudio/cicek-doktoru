@@ -296,12 +296,13 @@ class _WaterCalculatorScreenState extends State<WaterCalculatorScreen> {
       _historyKey,
       updated.map((entry) => jsonEncode(entry.toJson())).toList(),
     );
-    await NotificationService.instance.scheduleWateringCalculatorReminder(
-      plantName: result.plantName,
-      dueDate: result.nextWatering,
-      amountMl: result.amountMl,
-      intervalText: result.interval.label,
-    );
+    final scheduled = await NotificationService.instance
+        .scheduleWateringCalculatorReminder(
+          plantName: result.plantName,
+          dueDate: result.nextWatering,
+          amountMl: result.amountMl,
+          intervalText: result.interval.label,
+        );
     if (!mounted) {
       return;
     }
@@ -310,8 +311,19 @@ class _WaterCalculatorScreenState extends State<WaterCalculatorScreen> {
       _saving = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Sulama tarihi kaydedildi ve bildirim kuruldu.'),
+      SnackBar(
+        content: Text(
+          scheduled
+              ? 'Sulama tarihi kaydedildi ve bildirim kuruldu.'
+              : 'Sulama tarihi kaydedildi. Hatırlatma için bildirim iznini aç.',
+        ),
+        action: scheduled
+            ? null
+            : SnackBarAction(
+                label: 'AYARLAR',
+                onPressed: () =>
+                    NotificationService.instance.openNotificationSettings(),
+              ),
       ),
     );
   }

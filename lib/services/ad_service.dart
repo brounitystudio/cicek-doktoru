@@ -13,7 +13,13 @@ class AdService {
   static final AdService instance = AdService._();
 
   bool _initialized = false;
+  Future<bool>? _initializationFuture;
   RewardedAd? _rewardedAd;
+  AppOpenAd? _appOpenAd;
+  DateTime? _appOpenLoadedAt;
+  DateTime? _backgroundedAt;
+  bool _appOpenLoadInProgress = false;
+  bool _isShowingAppOpen = false;
   Timer? _delayedInterstitialTimer;
 
   static const _launchDateKey = 'ad_launch_date';
@@ -23,21 +29,210 @@ class AdService {
       'ad_diagnosis_interstitial_count';
   static const _diagnosisInterstitialLastMsKey =
       'ad_diagnosis_interstitial_last_ms';
+  static const _authenticatedLaunchCountKey = 'ad_authenticated_launch_count';
+  static const _appOpenShownDateKey = 'ad_app_open_shown_date';
+  static const _minimumAppOpenLaunchCount = 2;
+  static const _minimumBackgroundDuration = Duration(minutes: 2);
+  static const _maximumAppOpenCacheDuration = Duration(hours: 4);
 
-  Future<void> initialize() async {
-    if (AdConfig.screenshotsDisableAds) {
-      return;
+  Future<bool> initialize() async {
+    final pending = _initializationFuture;
+    if (pending != null) {
+      return pending;
+    }
+    final future = _initialize();
+    _initializationFuture = future;
+    try {
+      final initialized = await future;
+      if (!initialized) {
+        _initializationFuture = null;
+      }
+      return initialized;
+    } catch (_) {
+      _initializationFuture = null;
+      rethrow;
+    }
+  }
+
+  Future<bool> _initialize() async {
+    if (AdConfig.adsDisabled) {
+      return false;
     }
     if (_initialized) {
-      return;
+      return true;
+    }
+    if (!await _requestConsentAndCheckAdEligibility()) {
+      return false;
     }
     await MobileAds.instance.initialize();
     _initialized = true;
     unawaited(loadRewardedAd().catchError((_) {}));
+    unawaited(loadAppOpenAd().catchError((_) {}));
+    return true;
+  }
+
+  Future<bool> _requestConsentAndCheckAdEligibility() async {
+    final completer = Completer<bool>();
+
+    Future<void> finish() async {
+      if (!completer.isCompleted) {
+        completer.complete(await ConsentInformation.instance.canRequestAds());
+      }
+    }
+
+    ConsentInformation.instance.requestConsentInfoUpdate(
+      ConsentRequestParameters(),
+      () {
+        ConsentForm.loadAndShowConsentFormIfRequired((_) {
+          unawaited(finish());
+        });
+      },
+      (_) => unawaited(finish()),
+    );
+
+    return completer.future.timeout(
+      const Duration(seconds: 20),
+      onTimeout: () => false,
+    );
+  }
+
+  Future<bool> isPrivacyOptionsRequired() async {
+    if (AdConfig.adsDisabled) {
+      return false;
+    }
+    try {
+      final status = await ConsentInformation.instance
+          .getPrivacyOptionsRequirementStatus();
+      return status == PrivacyOptionsRequirementStatus.required;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> showPrivacyOptionsForm() async {
+    if (AdConfig.adsDisabled) {
+      return;
+    }
+    final completer = Completer<void>();
+    ConsentForm.showPrivacyOptionsForm((_) {
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+    });
+    await completer.future;
+  }
+
+  Future<void> registerAuthenticatedLaunch() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final count = prefs.getInt(_authenticatedLaunchCountKey) ?? 0;
+    await prefs.setInt(_authenticatedLaunchCountKey, count + 1);
+    if (!await initialize()) {
+      return;
+    }
+  }
+
+  void markAppBackgrounded() {
+    _backgroundedAt = DateTime.now();
+  }
+
+  Future<void> showAppOpenOnForegroundIfEligible() async {
+    if (AdConfig.adsDisabled || _isShowingAppOpen) {
+      return;
+    }
+    final backgroundedAt = _backgroundedAt;
+    _backgroundedAt = null;
+    if (backgroundedAt == null ||
+        DateTime.now().difference(backgroundedAt) <
+            _minimumBackgroundDuration) {
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      return;
+    }
+    final plan = await EntitlementService().getCurrentPlan();
+    if (plan.adsDisabled) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    if ((prefs.getInt(_authenticatedLaunchCountKey) ?? 0) <
+            _minimumAppOpenLaunchCount ||
+        prefs.getString(_appOpenShownDateKey) == _todayKey()) {
+      return;
+    }
+
+    final loadedAt = _appOpenLoadedAt;
+    if (loadedAt == null ||
+        DateTime.now().difference(loadedAt) > _maximumAppOpenCacheDuration) {
+      _appOpenAd?.dispose();
+      _appOpenAd = null;
+      _appOpenLoadedAt = null;
+    }
+    if (_appOpenAd == null) {
+      await loadAppOpenAd();
+      return;
+    }
+
+    final ad = _appOpenAd!;
+    _appOpenAd = null;
+    _appOpenLoadedAt = null;
+    _isShowingAppOpen = true;
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdShowedFullScreenContent: (_) {
+        unawaited(prefs.setString(_appOpenShownDateKey, _todayKey()));
+      },
+      onAdDismissedFullScreenContent: (ad) {
+        _isShowingAppOpen = false;
+        ad.dispose();
+        unawaited(loadAppOpenAd().catchError((_) {}));
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        _isShowingAppOpen = false;
+        ad.dispose();
+        unawaited(loadAppOpenAd().catchError((_) {}));
+      },
+    );
+    await ad.show();
+  }
+
+  Future<void> loadAppOpenAd() async {
+    if (AdConfig.adsDisabled || _appOpenLoadInProgress || _appOpenAd != null) {
+      return;
+    }
+    if (!await initialize()) {
+      return;
+    }
+    _appOpenLoadInProgress = true;
+    final completer = Completer<void>();
+    await AppOpenAd.load(
+      adUnitId: AdConfig.appOpenAdUnitId,
+      request: const AdRequest(),
+      adLoadCallback: AppOpenAdLoadCallback(
+        onAdLoaded: (ad) {
+          _appOpenAd = ad;
+          _appOpenLoadedAt = DateTime.now();
+          _appOpenLoadInProgress = false;
+          completer.complete();
+        },
+        onAdFailedToLoad: (error) {
+          _appOpenAd = null;
+          _appOpenLoadedAt = null;
+          _appOpenLoadInProgress = false;
+          completer.complete();
+        },
+      ),
+    );
+    return completer.future;
   }
 
   Future<void> scheduleDelayedDailyInterstitial() async {
-    if (AdConfig.screenshotsDisableAds) {
+    if (AdConfig.adsDisabled) {
       return;
     }
     if (_delayedInterstitialTimer != null) {
@@ -76,10 +271,12 @@ class AdService {
   }
 
   Future<void> loadRewardedAd() async {
-    if (AdConfig.screenshotsDisableAds) {
+    if (AdConfig.adsDisabled) {
       return;
     }
-    await initialize();
+    if (!await initialize()) {
+      throw const AdException('Reklam izni henüz hazır değil.');
+    }
     final completer = Completer<void>();
     await RewardedAd.load(
       adUnitId: AdConfig.rewardedDiagnosisCreditAdUnitId,
@@ -103,10 +300,12 @@ class AdService {
   }
 
   Future<int> showRewardedForDiagnosisCredit() async {
-    if (AdConfig.screenshotsDisableAds) {
-      throw const AdException('Reklam ekran görüntüsü modunda kapalı.');
+    if (AdConfig.adsDisabled) {
+      throw const AdException('Reklam bu platformda şu anda kullanılamıyor.');
     }
-    await initialize();
+    if (!await initialize()) {
+      throw const AdException('Reklam izni henüz hazır değil.');
+    }
     if (_rewardedAd == null) {
       await loadRewardedAd();
     }
@@ -161,7 +360,7 @@ class AdService {
   }
 
   Future<void> showInterstitialAfterDiagnosisIfNeeded() async {
-    if (AdConfig.screenshotsDisableAds) {
+    if (AdConfig.adsDisabled) {
       return;
     }
 
@@ -189,7 +388,9 @@ class AdService {
       return;
     }
 
-    await initialize();
+    if (!await initialize()) {
+      return;
+    }
     final completer = Completer<void>();
     await InterstitialAd.load(
       adUnitId: AdConfig.delayedInterstitialAdUnitId,
@@ -213,7 +414,7 @@ class AdService {
   }
 
   Future<void> _showDelayedInterstitialForToday(String today) async {
-    if (AdConfig.screenshotsDisableAds) {
+    if (AdConfig.adsDisabled) {
       return;
     }
     _delayedInterstitialTimer = null;
@@ -233,7 +434,9 @@ class AdService {
       return;
     }
 
-    await initialize();
+    if (!await initialize()) {
+      return;
+    }
     final completer = Completer<void>();
     await InterstitialAd.load(
       adUnitId: AdConfig.delayedInterstitialAdUnitId,

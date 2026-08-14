@@ -55,7 +55,10 @@ class PlantScanInput {
 }
 
 class DiagnosisService {
-  Future<DiagnosisResult> diagnose(PlantScanInput input) async {
+  Future<DiagnosisResult> diagnose(
+    PlantScanInput input, {
+    String? requestId,
+  }) async {
     const useMock = bool.fromEnvironment('USE_MOCK_DIAGNOSIS');
     if (useMock) {
       return _mockDiagnose(input);
@@ -93,6 +96,8 @@ class DiagnosisService {
             if (imageBase64List.length > 1) 'imageBase64List': imageBase64List,
             'mimeType': 'image/jpeg',
             'answers': input.backendAnswers,
+            // ignore: use_null_aware_elements
+            if (requestId != null) 'requestId': requestId,
           })
           .timeout(const Duration(seconds: 100));
     } on TimeoutException {

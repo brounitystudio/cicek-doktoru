@@ -1,4 +1,4 @@
-import {DocumentData, FieldValue, Firestore, Timestamp} from "firebase-admin/firestore";
+import {DocumentData, DocumentReference, FieldValue, Firestore, Timestamp} from "firebase-admin/firestore";
 import {HttpsError} from "firebase-functions/v2/https";
 
 const dailyFormat = new Intl.DateTimeFormat("en-CA", {timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit"});
@@ -10,6 +10,7 @@ export const userIndexCollection = "cicek_user_index";
 export interface UserEntitlements {
   plan: "free" | "premium_monthly" | "premium_yearly";
   subscriptionActive: boolean;
+  subscriptionExpiresAt?: string;
   dailyFreeUsed: number;
   dailyFreeResetDate: string;
   rewardCredits: number;
@@ -119,6 +120,46 @@ export class EntitlementService {
     });
   }
 
+  async consumeCreditAndCreateDiagnosis(
+    userId: string,
+    diagnosisRef: DocumentReference,
+    diagnosis: DocumentData,
+  ): Promise<boolean> {
+    const userRef = this.db.collection(usersCollection).doc(userId);
+    return this.db.runTransaction(async (transaction) => {
+      const diagnosisSnapshot = await transaction.get(diagnosisRef);
+      const userSnapshot = await transaction.get(userRef);
+      if (diagnosisSnapshot.exists) {
+        return false;
+      }
+
+      const entitlements = normalizeEntitlements(userSnapshot.data() ?? {}, currentDay(), currentMonth());
+      const update: Record<string, unknown> = {
+        dailyFreeResetDate: entitlements.dailyFreeResetDate,
+        rewardCreditsResetDate: entitlements.rewardCreditsResetDate,
+        premiumResetMonth: entitlements.premiumResetMonth,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      if (hasPremiumCredit(entitlements)) {
+        update.premiumUsedThisMonth = entitlements.premiumUsedThisMonth + 1;
+      } else if (hasDailyFreeCredit(entitlements)) {
+        update.dailyFreeUsed = entitlements.dailyFreeUsed + 1;
+      } else if (entitlements.rewardCredits > 0) {
+        update.rewardCredits = FieldValue.increment(-1);
+      } else {
+        throw new HttpsError("resource-exhausted", "NO_CREDITS");
+      }
+
+      if (!userSnapshot.exists) {
+        update.createdAt = Timestamp.now();
+      }
+      transaction.set(userRef, update, {merge: true});
+      transaction.set(diagnosisRef, diagnosis);
+      return true;
+    });
+  }
+
   async grantRewardCredit(userId: string): Promise<{success: true; rewardCredits: number}> {
     const userRef = this.db.collection(usersCollection).doc(userId);
     return this.db.runTransaction(async (transaction) => {
@@ -147,7 +188,12 @@ export class EntitlementService {
     });
   }
 
-  async updatePremiumStatus(userId: string, plan: "free" | "premium_monthly" | "premium_yearly", subscriptionActive: boolean): Promise<UserEntitlements> {
+  async updatePremiumStatus(
+    userId: string,
+    plan: "free" | "premium_monthly" | "premium_yearly",
+    subscriptionActive: boolean,
+    subscriptionExpiresAt?: string,
+  ): Promise<UserEntitlements> {
     const today = currentDay();
     const month = currentMonth();
     const userRef = this.db.collection(usersCollection).doc(userId);
@@ -158,6 +204,7 @@ export class EntitlementService {
       ...current,
       plan,
       subscriptionActive,
+      subscriptionExpiresAt: subscriptionExpiresAt ?? null,
       premiumMonthlyLimit: subscriptionActive ? premiumLimit : 0,
       adsDisabled: subscriptionActive,
       maxSavedPlants: subscriptionActive ? 9999 : 3,
@@ -192,6 +239,7 @@ export class EntitlementService {
         photoURL: typeof data.photoURL === "string" ? data.photoURL : null,
         plan: normalized.plan,
         subscriptionActive: normalized.subscriptionActive,
+        subscriptionExpiresAt: normalized.subscriptionExpiresAt ?? null,
         dailyFreeUsed: normalized.dailyFreeUsed,
         rewardCredits: normalized.rewardCredits,
         premiumMonthlyLimit: normalized.premiumMonthlyLimit,
@@ -249,11 +297,15 @@ function normalizeEntitlements(data: DocumentData, today: string, month: string)
   const rewardResetDate = String(data.rewardCreditsResetDate ?? today);
   const premiumResetMonth = String(data.premiumResetMonth ?? month);
   const plan = normalizePlan(data.plan);
-  const subscriptionActive = plan !== "free" && data.subscriptionActive === true;
+  const subscriptionExpiresAt = hasText(data.subscriptionExpiresAt) ? String(data.subscriptionExpiresAt) : undefined;
+  const expiresAtMs = subscriptionExpiresAt ? Date.parse(subscriptionExpiresAt) : Number.NaN;
+  const subscriptionNotExpired = !subscriptionExpiresAt || (Number.isFinite(expiresAtMs) && expiresAtMs > Date.now());
+  const subscriptionActive = plan !== "free" && data.subscriptionActive === true && subscriptionNotExpired;
 
   return {
     plan,
     subscriptionActive,
+    subscriptionExpiresAt,
     dailyFreeUsed: dailyResetDate === today ? Number(data.dailyFreeUsed ?? 0) : 0,
     dailyFreeResetDate: today,
     rewardCredits: Number(data.rewardCredits ?? 0),

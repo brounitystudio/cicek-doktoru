@@ -1,0 +1,39 @@
+workflows:
+  ios-app-store:
+    name: Çiçek Doktoru iOS App Store
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: cicek-doktoru
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.cicekdoktoru.cicekDoktoru
+      vars:
+        APP_STORE_APPLE_ID: 6787075776
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Flutter paketlerini hazırla
+        script: flutter pub get
+      - name: iOS imzalama profillerini uygula
+        script: xcode-project use-profiles --project ios/Runner.xcodeproj
+      - name: Flutter testlerini çalıştır
+        script: flutter test
+      - name: App Store IPA oluştur
+        script: |
+          BUILD_NUMBER=$(($(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID") + 1))
+          flutter build ipa --release \
+            --build-name=1.0.8 \
+            --build-number="$BUILD_NUMBER" \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false

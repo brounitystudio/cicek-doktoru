@@ -11,6 +11,7 @@ import '../screens/premium_screen.dart';
 import '../screens/scan_plant_screen.dart';
 import '../screens/water_calculator_screen.dart';
 import '../services/ad_config.dart';
+import '../services/ad_service.dart';
 import '../services/entitlement_service.dart';
 import '../services/language_service.dart';
 import '../services/notification_service.dart';
@@ -182,7 +183,7 @@ class _HomeAdBannerState extends State<_HomeAdBanner> {
   }
 
   Future<void> _loadIfAllowed() async {
-    if (AdConfig.screenshotsDisableAds) {
+    if (AdConfig.adsDisabled) {
       return;
     }
 
@@ -199,7 +200,9 @@ class _HomeAdBannerState extends State<_HomeAdBanner> {
 
     setState(() => _shouldShow = true);
 
-    await MobileAds.instance.initialize();
+    if (!await AdService.instance.initialize()) {
+      return;
+    }
     if (!mounted) {
       return;
     }

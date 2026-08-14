@@ -17,7 +17,7 @@ const templates: Record<CauseCode, CareTemplate> = {
       "2. Gün: Saksı tabağını ve drenajı kontrol et.",
       "3. Gün: Sararmış/çürümüş yaprakları temiz makasla al.",
       "4. Gün: Bitkiyi sabit ve aydınlık bir yerde tut.",
-      "5. Gün: Toprak kuruduysa az miktarda sulama yap.",
+      "5. Gün: Türün kuruluk eşiği oluştuysa kök bölgesini eşit ıslat; fazla suyun saksıdan akmasına izin ver.",
       "6. Gün: Yeni sararma olup olmadığını kontrol et.",
       "7. Gün: Aynı açıdan tekrar fotoğraf çekerek gelişimi kontrol et.",
     ],

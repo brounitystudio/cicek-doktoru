@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/language_service.dart';
 import '../services/purchase_service.dart';
@@ -20,6 +21,8 @@ class PremiumScreen extends StatefulWidget {
 class _PremiumScreenState extends State<PremiumScreen> {
   late Future<PurchaseCatalog> _catalogFuture;
   bool _busy = false;
+
+  String get _storeName => PurchaseService.storeName;
 
   @override
   void initState() {
@@ -66,8 +69,8 @@ class _PremiumScreenState extends State<PremiumScreen> {
                   _StatusCard(
                     icon: Icons.sync,
                     text: context.tr(
-                      'Google Play ürünleri kontrol ediliyor...',
-                      'Checking Google Play products...',
+                      '$_storeName ürünleri kontrol ediliyor...',
+                      'Checking $_storeName products...',
                     ),
                   )
                 else if (snapshot.hasError)
@@ -79,8 +82,8 @@ class _PremiumScreenState extends State<PremiumScreen> {
                   _StatusCard(
                     icon: Icons.storefront_outlined,
                     text: context.tr(
-                      'Google Play satın alma servisi bu cihazda hazır değil.',
-                      'Google Play billing is not ready on this device.',
+                      '$_storeName satın alma servisi bu cihazda hazır değil.',
+                      '$_storeName billing is not ready on this device.',
                     ),
                   )
                 else if (catalog!.notFoundIds.isNotEmpty)
@@ -166,10 +169,37 @@ class _PremiumScreenState extends State<PremiumScreen> {
                 const SizedBox(height: 14),
                 Text(
                   context.tr(
-                    'Abonelikler Google Play hesabından yönetilir ve iptal edilene kadar otomatik yenilenir. İptal edersen Premium erişimin ödenmiş dönem sonuna kadar sürer. Aylık adil kullanım limiti uygulanır.',
-                    'Subscriptions are managed through Google Play and renew automatically until cancelled. If you cancel, Premium remains active until the end of the paid period. A monthly fair-use limit applies.',
+                    'Abonelikler $_storeName hesabından yönetilir ve iptal edilene kadar otomatik yenilenir. İptal edersen Premium erişimin ödenmiş dönem sonuna kadar sürer. Aylık adil kullanım limiti uygulanır.',
+                    'Subscriptions are managed through $_storeName and renew automatically until cancelled. If you cancel, Premium remains active until the end of the paid period. A monthly fair-use limit applies.',
                   ),
                   style: AppTextStyles.muted.copyWith(height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 6,
+                  runSpacing: 2,
+                  children: [
+                    TextButton(
+                      onPressed: () => _openLegalLink(
+                        'https://brounitystudio.github.io/cicek-doktoru/privacy.html',
+                      ),
+                      child: Text(
+                        context.tr('Gizlilik Politikası', 'Privacy Policy'),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _openLegalLink(
+                        'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
+                      ),
+                      child: Text(
+                        context.tr(
+                          'Kullanım Şartları (EULA)',
+                          'Terms of Use (EULA)',
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -211,6 +241,22 @@ class _PremiumScreenState extends State<PremiumScreen> {
       if (mounted) {
         setState(() => _busy = false);
       }
+    }
+  }
+
+  Future<void> _openLegalLink(String value) async {
+    final opened = await launchUrl(
+      Uri.parse(value),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr('Bağlantı açılamadı.', 'The link could not be opened.'),
+          ),
+        ),
+      );
     }
   }
 }
@@ -290,8 +336,8 @@ class _PlanCard extends StatelessWidget {
           else
             Text(
               context.tr(
-                'Fiyat Google Play bağlantısı kurulunca gösterilir.',
-                'The price appears after connecting to Google Play.',
+                'Fiyat mağaza bağlantısı kurulunca gösterilir.',
+                'The price appears after connecting to the store.',
               ),
               style: AppTextStyles.body.copyWith(
                 color: muted,
@@ -302,8 +348,8 @@ class _PlanCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               context.tr(
-                'Bu ürün Play Console’da aktif olunca satın alınabilir.',
-                'This product can be purchased once it is active in Play Console.',
+                'Bu ürün mağazada aktif olunca satın alınabilir.',
+                'This product can be purchased once it is active in the store.',
               ),
               style: AppTextStyles.muted.copyWith(color: muted),
             ),

@@ -180,7 +180,7 @@ class _ArchiveIntro extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   shown == total || shown == 40
-                      ? 'Aramaya başla; bitkiye özel bakım bilgisi anında gelsin.'
+                      ? 'Aramaya başla; tür grubuna göre genel bakım özetini gör.'
                       : '$shown sonuç listeleniyor.',
                   style: AppTextStyles.muted,
                 ),
@@ -445,6 +445,23 @@ class _ArchiveDetailSheet extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
+              const AppCard(
+                color: AppColors.warmCream,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, color: AppColors.warning),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Bu bölüm genel bakım rehberidir. Sulama kararını takvime göre değil; toprağın nemi, saksı drenajı ve bitkinin güncel görünümüne göre ver.',
+                        style: AppTextStyles.body,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               _SafetyDetailBlock(entry: entry),
               _DetailBlock(
                 title: 'Sulama',

@@ -25,7 +25,7 @@ export function fallbackDiagnosis(): DiagnosisJson {
     severity: "medium",
     visualFindings: ["Fotoğraf üzerinden net görsel bulgu çıkarılamadı; yakın çekim önerilir."],
     symptoms: ["Fotoğraf üzerinden güvenli analiz tamamlanamadı."],
-    possibleCauses: [{code: "unknown", label: "Belirsiz", confidence: 1}],
+    possibleCauses: [{code: "unknown", label: "Görüntü yetersiz", confidence: 0.25}],
     needsCloseup: true,
     quickActions: ["Emin olmak için yaprak ve toprağın yakın çekimini ekleyin."],
     sevenDayPlan: [],
@@ -39,22 +39,37 @@ export function validateDiagnosisJson(value: unknown): DiagnosisJson {
     return fallbackDiagnosis();
   }
 
-  const possibleCauses = normalizeCauses(value.possibleCauses);
-  const healthScore = clampNumber(value.healthScore, 0, 100, 60);
+  const isPlant = typeof value.isPlant === "boolean" ? value.isPlant : true;
+  const visualFindings = normalizeStringList(value.visualFindings, 5);
+  const plantGuess = safeString(value.plantGuess, "Belirsiz");
+  const needsCloseup = !isPlant ||
+    value.needsCloseup === true ||
+    visualFindings.length < 2 ||
+    plantGuess.toLocaleLowerCase("tr").includes("belirsiz");
+  const possibleCauses = normalizeCauses(value.possibleCauses).map((cause) => ({
+    ...cause,
+    confidence: needsCloseup ? Math.min(cause.confidence, 0.59) : cause.confidence,
+  }));
+  const healthScore = isPlant ? clampNumber(value.healthScore, 0, 100, 60) : 0;
 
   return {
-    isPlant: typeof value.isPlant === "boolean" ? value.isPlant : true,
-    plantGuess: safeString(value.plantGuess, "Belirsiz"),
+    isPlant,
+    plantGuess: isPlant ? plantGuess : "Bitki algılanamadı",
     healthScore,
     severity: severities.includes(value.severity as Severity) ? value.severity as Severity : severityFromScore(healthScore),
-    visualFindings: normalizeStringList(value.visualFindings, 5),
+    visualFindings,
     symptoms: normalizeStringList(value.symptoms, 6),
-    possibleCauses: possibleCauses.length > 0 ? possibleCauses : [{code: "unknown", label: "Belirsiz", confidence: 1}],
-    needsCloseup: typeof value.needsCloseup === "boolean" ? value.needsCloseup : false,
+    possibleCauses: isPlant && possibleCauses.length > 0 ?
+      possibleCauses :
+      [{code: "unknown", label: "Görüntü yetersiz", confidence: 0.25}],
+    needsCloseup,
     quickActions: normalizeStringList(value.quickActions, 4),
     sevenDayPlan: normalizeStringList(value.sevenDayPlan, 7),
     safetyNote: safeString(value.safetyNote, "Kesin teşhis değildir. Sorun yayılıyorsa uzman/çiçekçi desteği alın."),
-    confidenceNote: safeString(value.confidenceNote, ""),
+    confidenceNote: safeString(
+      value.confidenceNote,
+      needsCloseup ? "Fotoğraf açısı veya ayrıntı düzeyi sınırlı; yeni fotoğraf sonucu güçlendirir." : "",
+    ),
   };
 }
 

@@ -25,6 +25,7 @@ export interface PlantAnswers {
 }
 
 export interface AnalyzePlantPhotoInput {
+  requestId?: string;
   imageBase64?: string;
   imageBase64List?: string[];
   imageUrl?: string;

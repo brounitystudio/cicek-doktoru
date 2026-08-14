@@ -254,6 +254,8 @@ Kurallar:
 - visualFindings maddeleri birbirinin tekrarı olmasın; her madde farklı organ, fotoğraf açısı veya bakım kanıtına değinsin.
 - quickActions en fazla 4 madde olsun; her madde fotoğraftaki bir bulguya veya bitki türüne bağlansın.
 - sevenDayPlan tam 7 madde olsun ve her madde "1. Gün:" biçiminde başlasın. Backend bu planı arşivle yeniden zenginleştirecek; yine de jenerik plan yazma.
+- quickActions içinde en az bir maddede kullanıcının son sulama, ışık, drenaj veya belirti cevabından ilgili olanı açıkça kullan. Kullanıcı cevabını fotoğrafta görülmüş kanıt gibi sunma; "kullanıcı belirtti" diye ayır.
+- sevenDayPlan içinde 2. günü son sulama cevabına, 3. günü konum/ışık cevabına, 5. günü belirti türü ve süresine göre özelleştir. Aynı cümleyi quickActions alanından kopyalama.
 - symptoms en fazla 6 madde olsun; fotoğrafta görünmeyen belirti uydurma.
 - symptoms boş kalmasın; hastalık belirtisi yoksa "Belirgin hastalık izi seçilmiyor" gibi gözleme dayalı bir madde yaz.
 - possibleCauses içinde "healthy" ile aynı anda yüksek güvenli sorun verme. Sağlıklı görünüyorsa diğer nedenleri düşük güvenli "kontrol edilmesi gereken risk" olarak yaz veya hiç ekleme.
@@ -261,6 +263,7 @@ Kurallar:
 - Eğer bitki sağlıklı görünüyorsa code olarak "healthy" kullan ve gereksiz sorun üretme.
 - Eğer türden emin değilsen plantGuess alanında "Belirsiz" veya "Muhtemelen ..." kullan.
 - Eğer fotoğraf bulanık, uzak veya yaprak/toprak detayı yetersizse needsCloseup true yap.
+- needsCloseup true ise hiçbir neden için confidence değerini 0.60 veya üzerinde verme; eksik görüntüyle yüksek güven üretme.
 - Görselde bitki yoksa isPlant false döndür, healthScore 0 yap, kısa ve nazik tekrar fotoğraf öner.
 - Kimyasal ilaç ismi verme.
 - Sulama önerilerinde "hemen bol su ver" gibi riskli ve aşırı talimatlardan kaçın.

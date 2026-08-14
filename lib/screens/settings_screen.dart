@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -9,6 +10,7 @@ import '../screens/legal_screen.dart';
 import '../screens/premium_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../services/auth_service.dart';
+import '../services/ad_service.dart';
 import '../services/entitlement_service.dart';
 import '../services/language_service.dart';
 import '../services/notification_service.dart';
@@ -31,11 +33,21 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late Future<UserPlan> _planFuture;
+  bool _privacyOptionsRequired = false;
+  bool _deletingAccount = false;
 
   @override
   void initState() {
     super.initState();
     _planFuture = EntitlementService().getCurrentPlan();
+    _loadPrivacyOptionsRequirement();
+  }
+
+  Future<void> _loadPrivacyOptionsRequirement() async {
+    final required = await AdService.instance.isPrivacyOptionsRequired();
+    if (mounted) {
+      setState(() => _privacyOptionsRequired = required);
+    }
   }
 
   Future<void> _refreshPlan() async {
@@ -109,9 +121,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             onTap: () async {
                               final tasks = await PlantRepository()
                                   .getCareTasks();
-                              await NotificationService.instance
-                                  .scheduleCareReminders(tasks);
+                              final scheduled = await NotificationService
+                                  .instance
+                                  .scheduleCareReminders(
+                                    tasks,
+                                    requestPermissionIfNeeded: true,
+                                  );
                               if (!context.mounted) return;
+                              if (!scheduled) {
+                                await _showNotificationPermissionDialog(
+                                  context,
+                                );
+                                return;
+                              }
                               _showStatusNotice(
                                 context,
                                 icon: Icons.notifications_active_outlined,
@@ -166,6 +188,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               context,
                             ).pushNamed(LegalScreen.routeName),
                           ),
+                          if (_privacyOptionsRequired)
+                            _SettingsTile(
+                              icon: Icons.ad_units_outlined,
+                              title: context.tr(
+                                'Reklam Gizlilik Seçenekleri',
+                                'Ad Privacy Options',
+                              ),
+                              subtitle: context.tr(
+                                'Reklam rızası tercihlerini değiştir',
+                                'Change your ad consent choices',
+                              ),
+                              onTap: () =>
+                                  AdService.instance.showPrivacyOptionsForm(),
+                            ),
                           _SettingsTile(
                             icon: Icons.support_agent_outlined,
                             title: context.tr(
@@ -194,8 +230,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             icon: Icons.logout_rounded,
                             title: context.tr('Çıkış yap', 'Sign out'),
                             subtitle: context.tr(
-                              'Google hesabından ayrıl',
-                              'Leave your Google account',
+                              'Bu cihazdaki oturumu kapat',
+                              'Sign out on this device',
                             ),
                             onTap: () async {
                               await AuthService().signOut();
@@ -205,6 +241,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 (_) => false,
                               );
                             },
+                          ),
+                          _SettingsTile(
+                            icon: Icons.delete_forever_outlined,
+                            title: _deletingAccount
+                                ? context.tr(
+                                    'Hesap siliniyor...',
+                                    'Deleting account...',
+                                  )
+                                : context.tr(
+                                    'Hesabı ve Verileri Sil',
+                                    'Delete Account and Data',
+                                  ),
+                            subtitle: context.tr(
+                              'Bu işlem geri alınamaz',
+                              'This action cannot be undone',
+                            ),
+                            destructive: true,
+                            onTap: _deletingAccount
+                                ? null
+                                : () => _confirmAccountDeletion(context),
                           ),
                           _SettingsTile(
                             icon: Icons.star_rate_outlined,
@@ -230,6 +286,124 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  Future<void> _confirmAccountDeletion(BuildContext context) async {
+    final firstConfirmation = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(
+          Icons.delete_forever_outlined,
+          color: Colors.redAccent,
+          size: 36,
+        ),
+        title: Text(context.tr('Hesabını sil?', 'Delete your account?')),
+        content: Text(
+          context.tr(
+            'Teşhislerin, bitki kayıtların, bakım görevlerin, fotoğrafların ve Premium hesap bağlantın kalıcı olarak silinir.',
+            'Your diagnoses, saved plants, care tasks, photos and Premium account link will be permanently deleted.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(context.tr('Vazgeç', 'Cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(context.tr('Devam et', 'Continue')),
+          ),
+        ],
+      ),
+    );
+    if (firstConfirmation != true || !context.mounted) {
+      return;
+    }
+
+    final finalConfirmation = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.tr('Son onay', 'Final confirmation')),
+        content: Text(
+          context.tr(
+            'Hesap ve veriler kalıcı olarak silinecek. Bu işlemi geri alamayız.',
+            'Your account and data will be permanently deleted. This cannot be undone.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(context.tr('İptal', 'Cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(context.tr('Kalıcı Olarak Sil', 'Delete Permanently')),
+          ),
+        ],
+      ),
+    );
+    if (finalConfirmation != true || !context.mounted) {
+      return;
+    }
+
+    setState(() => _deletingAccount = true);
+    try {
+      await AuthService().deleteCurrentAccount();
+      if (!context.mounted) return;
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(SignInScreen.routeName, (_) => false);
+    } catch (error) {
+      if (!context.mounted) return;
+      _showStatusNotice(
+        context,
+        icon: Icons.error_outline,
+        title: context.tr('Hesap silinemedi', 'Account could not be deleted'),
+        message: error.toString(),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _deletingAccount = false);
+      }
+    }
+  }
+}
+
+Future<void> _showNotificationPermissionDialog(BuildContext context) {
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      icon: const Icon(
+        Icons.notifications_off_outlined,
+        color: AppColors.warning,
+        size: 34,
+      ),
+      title: Text(
+        context.tr('Bildirim izni kapalı', 'Notifications are disabled'),
+      ),
+      content: Text(
+        context.tr(
+          'Bakım günlerini hatırlatabilmemiz için Çiçek Doktoru bildirimlerini telefon ayarlarından açın.',
+          'Enable Plant Doctor notifications in your phone settings so we can remind you about care days.',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: Text(context.tr('Şimdi değil', 'Not now')),
+        ),
+        FilledButton.icon(
+          onPressed: () async {
+            Navigator.of(dialogContext).pop();
+            await NotificationService.instance.openNotificationSettings();
+          },
+          icon: const Icon(Icons.settings_outlined),
+          label: Text(context.tr('Ayarlara git', 'Open settings')),
+        ),
+      ],
+    ),
+  );
 }
 
 Future<void> _openSupportMail(BuildContext context) async {
@@ -266,6 +440,26 @@ Future<void> _openSupportMail(BuildContext context) async {
 }
 
 Future<void> _openStoreListing(BuildContext context) async {
+  if (defaultTargetPlatform == TargetPlatform.iOS) {
+    final appStoreUri = Uri.parse(
+      'https://apps.apple.com/app/id6787075776?action=write-review',
+    );
+    if (await launchUrl(appStoreUri, mode: LaunchMode.externalApplication)) {
+      return;
+    }
+    if (!context.mounted) return;
+    _showStatusNotice(
+      context,
+      icon: Icons.storefront_outlined,
+      title: context.tr('App Store açılamadı', 'App Store could not open'),
+      message: context.tr(
+        'Uygulamayı App Store içinde Çiçek Doktoru adıyla bulabilirsin.',
+        'You can find the app in the App Store as Plant Doctor.',
+      ),
+    );
+    return;
+  }
+
   const packageName = 'com.brounitystudio.cicek_doktoru';
   final marketUri = Uri.parse('market://details?id=$packageName');
   final webUri = Uri.parse(
@@ -403,7 +597,10 @@ class _UserCard extends StatelessWidget {
                     Text(
                       displayName?.isNotEmpty == true
                           ? displayName!
-                          : context.tr('Google kullanıcısı', 'Google user'),
+                          : context.tr(
+                              'Çiçek Doktoru kullanıcısı',
+                              'Plant Doctor user',
+                            ),
                       style: AppTextStyles.section.copyWith(
                         color: Colors.white,
                       ),
@@ -495,12 +692,14 @@ class _SettingsTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.destructive = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
@@ -520,7 +719,10 @@ class _SettingsTile extends StatelessWidget {
                   color: AppColors.mint,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(icon, color: AppColors.darkGreen),
+                child: Icon(
+                  icon,
+                  color: destructive ? Colors.redAccent : AppColors.darkGreen,
+                ),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -531,6 +733,7 @@ class _SettingsTile extends StatelessWidget {
                       title,
                       style: AppTextStyles.body.copyWith(
                         fontWeight: FontWeight.w900,
+                        color: destructive ? Colors.redAccent : null,
                       ),
                     ),
                     const SizedBox(height: 3),

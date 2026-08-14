@@ -10,7 +10,10 @@ import '../widgets/botanical_background.dart';
 import '../widgets/branded_header.dart';
 
 class CareCalendarScreen extends StatefulWidget {
-  const CareCalendarScreen({super.key});
+  const CareCalendarScreen({super.key, this.focusTaskId, this.focusPlantId});
+
+  final String? focusTaskId;
+  final String? focusPlantId;
 
   @override
   State<CareCalendarScreen> createState() => _CareCalendarScreenState();
@@ -43,6 +46,19 @@ class _CareCalendarScreenState extends State<CareCalendarScreen> {
   Future<List<CareTask>> _loadTasks() async {
     final tasks = await PlantRepository().getCareTasks();
     await NotificationService.instance.scheduleCareReminders(tasks);
+    CareTask? focusedTask;
+    for (final task in tasks) {
+      if ((widget.focusTaskId != null && task.id == widget.focusTaskId) ||
+          (widget.focusTaskId == null &&
+              widget.focusPlantId != null &&
+              task.plantId == widget.focusPlantId)) {
+        focusedTask = task;
+        break;
+      }
+    }
+    if (focusedTask != null) {
+      _selectedDate = _dateOnly(focusedTask.dueDate);
+    }
     return tasks;
   }
 
@@ -136,6 +152,8 @@ class _CareCalendarScreenState extends State<CareCalendarScreen> {
                         tasks: selectedTasks,
                         emptyText: _selectedEmptyText(),
                         highlight: _isSameDay(_selectedDate, DateTime.now()),
+                        focusTaskId: widget.focusTaskId,
+                        focusPlantId: widget.focusPlantId,
                         onComplete: _completeTask,
                       ),
                     ),
@@ -146,6 +164,8 @@ class _CareCalendarScreenState extends State<CareCalendarScreen> {
                       child: _TaskList(
                         tasks: upcomingTasks,
                         emptyText: 'Yaklaşan görev yok.',
+                        focusTaskId: widget.focusTaskId,
+                        focusPlantId: widget.focusPlantId,
                         onComplete: _completeTask,
                       ),
                     ),
@@ -488,11 +508,15 @@ class _TaskList extends StatelessWidget {
     required this.emptyText,
     required this.onComplete,
     this.highlight = false,
+    this.focusTaskId,
+    this.focusPlantId,
   });
 
   final List<CareTask> tasks;
   final String emptyText;
   final bool highlight;
+  final String? focusTaskId;
+  final String? focusPlantId;
   final ValueChanged<CareTask> onComplete;
 
   @override
@@ -512,6 +536,11 @@ class _TaskList extends StatelessWidget {
               child: _TaskTile(
                 task: task,
                 highlight: highlight,
+                focused:
+                    (focusTaskId != null && task.id == focusTaskId) ||
+                    (focusTaskId == null &&
+                        focusPlantId != null &&
+                        task.plantId == focusPlantId),
                 onComplete: () => onComplete(task),
               ),
             ),
@@ -526,17 +555,20 @@ class _TaskTile extends StatelessWidget {
     required this.task,
     required this.onComplete,
     this.highlight = false,
+    this.focused = false,
   });
 
   final CareTask task;
   final bool highlight;
+  final bool focused;
   final VoidCallback onComplete;
 
   @override
   Widget build(BuildContext context) {
     final tone = _colorFor(task.type);
+    final emphasized = highlight || focused;
     return AppCard(
-      color: highlight ? AppColors.darkGreen : AppColors.card,
+      color: emphasized ? AppColors.darkGreen : AppColors.card,
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
@@ -544,14 +576,14 @@ class _TaskTile extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: highlight
+              color: emphasized
                   ? Colors.white.withValues(alpha: .16)
                   : tone.withValues(alpha: .14),
               borderRadius: BorderRadius.circular(18),
             ),
             child: Icon(
               _iconFor(task.type),
-              color: highlight ? Colors.white : tone,
+              color: emphasized ? Colors.white : tone,
             ),
           ),
           const SizedBox(width: 14),
@@ -562,21 +594,21 @@ class _TaskTile extends StatelessWidget {
                 Text(
                   task.title,
                   style: AppTextStyles.section.copyWith(
-                    color: highlight ? Colors.white : AppColors.ink,
+                    color: emphasized ? Colors.white : AppColors.ink,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   _dateLabel(task.dueDate),
                   style: AppTextStyles.muted.copyWith(
-                    color: highlight ? Colors.white70 : AppColors.muted,
+                    color: emphasized ? Colors.white70 : AppColors.muted,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   _taskHint(task),
                   style: AppTextStyles.muted.copyWith(
-                    color: highlight ? Colors.white70 : AppColors.muted,
+                    color: emphasized ? Colors.white70 : AppColors.muted,
                     fontSize: 12,
                     height: 1.25,
                   ),
@@ -589,7 +621,7 @@ class _TaskTile extends StatelessWidget {
             child: Text(
               'Tamamla',
               style: TextStyle(
-                color: highlight ? AppColors.lightGreen : tone,
+                color: emphasized ? AppColors.lightGreen : tone,
                 fontWeight: FontWeight.w900,
               ),
             ),

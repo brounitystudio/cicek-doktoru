@@ -8,6 +8,10 @@ class AdConfig {
     defaultValue: false,
   );
 
+  static bool get adsSupported =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static bool get adsDisabled => screenshotsDisableAds || !adsSupported;
+
   static const useLiveAdIds = bool.fromEnvironment(
     'ADMOB_USE_LIVE_IDS',
     defaultValue: kReleaseMode,
@@ -18,6 +22,7 @@ class AdConfig {
   static const _testBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
   static const _testInterstitialAdUnitId =
       'ca-app-pub-3940256099942544/1033173712';
+  static const _testAppOpenAdUnitId = 'ca-app-pub-3940256099942544/9257395921';
 
   static const _defaultReleaseRewardedDiagnosisCreditAdUnitId =
       'ca-app-pub-1448824705545764/2700171753';
@@ -25,6 +30,8 @@ class AdConfig {
       'ca-app-pub-1448824705545764/6191329822';
   static const _defaultReleaseInterstitialAdUnitId =
       'ca-app-pub-1448824705545764/3565166481';
+  static const _defaultReleaseAppOpenAdUnitId =
+      'ca-app-pub-1448824705545764/8272155498';
 
   static const _configuredReleaseRewardedDiagnosisCreditAdUnitId =
       String.fromEnvironment('ADMOB_REWARDED_DIAGNOSIS_ID');
@@ -33,6 +40,9 @@ class AdConfig {
   );
   static const _configuredReleaseInterstitialAdUnitId = String.fromEnvironment(
     'ADMOB_INTERSTITIAL_ID',
+  );
+  static const _configuredReleaseAppOpenAdUnitId = String.fromEnvironment(
+    'ADMOB_APP_OPEN_ID',
   );
 
   static String get rewardedDiagnosisCreditAdUnitId {
@@ -67,4 +77,15 @@ class AdConfig {
   }
 
   static bool get usesLiveInterstitialAds => useLiveAdIds;
+
+  static String get appOpenAdUnitId {
+    if (useLiveAdIds) {
+      return _configuredReleaseAppOpenAdUnitId.isNotEmpty
+          ? _configuredReleaseAppOpenAdUnitId
+          : _defaultReleaseAppOpenAdUnitId;
+    }
+    return _testAppOpenAdUnitId;
+  }
+
+  static bool get usesLiveAppOpenAds => useLiveAdIds;
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../main.dart';
@@ -28,8 +29,12 @@ class _SignInScreenState extends State<SignInScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  Future<void> _signIn() async {
+  Future<void> _signInWithGoogle() async {
     await _completeSignIn(_authService.signInWithGoogle);
+  }
+
+  Future<void> _signInWithApple() async {
+    await _completeSignIn(_authService.signInWithApple);
   }
 
   Future<void> _signInForEmulator() async {
@@ -123,8 +128,8 @@ class _SignInScreenState extends State<SignInScreen> {
                 Center(
                   child: Text(
                     context.tr(
-                      'Premium hakların, teşhislerin ve bitki listen Google hesabınla eşleşir.',
-                      'Your Premium access, diagnoses and plant list stay linked to your Google account.',
+                      'Premium hakların, teşhislerin ve bitki listen güvenli hesabınla eşleşir.',
+                      'Your Premium access, diagnoses and plant list stay linked to your secure account.',
                     ),
                     textAlign: TextAlign.center,
                     style: AppTextStyles.body.copyWith(color: AppColors.muted),
@@ -151,6 +156,32 @@ class _SignInScreenState extends State<SignInScreen> {
                   ),
                   const SizedBox(height: 14),
                 ],
+                if (defaultTargetPlatform == TargetPlatform.iOS) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(56),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      onPressed: _isLoading ? null : _signInWithApple,
+                      icon: const Icon(Icons.apple),
+                      label: Text(
+                        _isLoading
+                            ? context.tr('Bağlanıyor...', 'Connecting...')
+                            : context.tr(
+                                'Apple ile devam et',
+                                'Continue with Apple',
+                              ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 AppButton(
                   label: _isLoading
                       ? context.tr('Bağlanıyor...', 'Connecting...')
@@ -159,7 +190,7 @@ class _SignInScreenState extends State<SignInScreen> {
                           'Continue with Google',
                         ),
                   icon: Icons.login_rounded,
-                  onPressed: _isLoading ? null : _signIn,
+                  onPressed: _isLoading ? null : _signInWithGoogle,
                 ),
                 if (DevAuthConfig.allowEmulatorLogin) ...[
                   const SizedBox(height: 10),
@@ -175,8 +206,8 @@ class _SignInScreenState extends State<SignInScreen> {
                 Center(
                   child: Text(
                     context.tr(
-                      'Satın alma gerekmeden Google hesabınla devam edebilirsin.',
-                      'You can continue with your Google account without purchasing.',
+                      'Satın alma gerekmeden hesabınla devam edebilirsin.',
+                      'You can continue with your account without purchasing.',
                     ),
                     textAlign: TextAlign.center,
                     style: AppTextStyles.muted.copyWith(fontSize: 12),

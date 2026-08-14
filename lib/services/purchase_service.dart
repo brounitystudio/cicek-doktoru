@@ -45,9 +45,21 @@ class PurchaseService {
 
   static final PurchaseService instance = PurchaseService._();
 
-  static const premiumMonthlyProductId = 'premium_monthly_6999';
-  static const premiumYearlyProductId = 'premium_yearly_59999';
-  static const _productIds = {premiumMonthlyProductId, premiumYearlyProductId};
+  static const _androidMonthlyProductId = 'premium_monthly_6999';
+  static const _androidYearlyProductId = 'premium_yearly_59999';
+  static const _iosMonthlyProductId = 'premium_monthly_109';
+  static const _iosYearlyProductId = 'premium_yearly_999';
+
+  static bool get isAppStore => defaultTargetPlatform == TargetPlatform.iOS;
+  static String get storeName => isAppStore ? 'App Store' : 'Google Play';
+  static String get premiumMonthlyProductId =>
+      isAppStore ? _iosMonthlyProductId : _androidMonthlyProductId;
+  static String get premiumYearlyProductId =>
+      isAppStore ? _iosYearlyProductId : _androidYearlyProductId;
+  static Set<String> get _productIds => {
+    premiumMonthlyProductId,
+    premiumYearlyProductId,
+  };
 
   final InAppPurchase _iap = InAppPurchase.instance;
   StreamSubscription<List<PurchaseDetails>>? _subscription;
@@ -58,7 +70,7 @@ class PurchaseService {
   Future<PurchaseCatalog> loadCatalog() async {
     final available = await _iap.isAvailable();
     if (!available) {
-      return const PurchaseCatalog(
+      return PurchaseCatalog(
         storeAvailable: false,
         products: [],
         notFoundIds: _productIds,
@@ -70,7 +82,7 @@ class PurchaseService {
       throw PurchaseException(
         response.error!.message.isNotEmpty
             ? response.error!.message
-            : 'Google Play ürünleri alınamadı.',
+            : '${PurchaseService.storeName} ürünleri alınamadı.',
       );
     }
 
@@ -110,14 +122,14 @@ class PurchaseService {
     final catalog = await loadCatalog();
     if (!catalog.storeAvailable) {
       throw const PurchaseException(
-        'Google Play satın alma servisi bu cihazda hazır değil.',
+        'Satın alma servisi bu cihazda hazır değil.',
       );
     }
 
     final product = catalog._byId(productId);
     if (product == null) {
       throw PurchaseException(
-        '$productId ürünü Google Play Console’da aktif görünmüyor.',
+        '$productId ürünü ${PurchaseService.storeName} tarafında aktif görünmüyor.',
       );
     }
 
@@ -137,7 +149,7 @@ class PurchaseService {
           _pendingPurchase = null;
         }
         throw const PurchaseException(
-          'Ödeme Google Play’de bekliyor olabilir. Durumu Play Store’dan kontrol edip Satın alımı geri yükle seçeneğini kullan.',
+          'Ödeme mağazada bekliyor olabilir. Durumu mağaza hesabından kontrol edip Satın alımı geri yükle seçeneğini kullan.',
         );
       },
     );
@@ -188,7 +200,7 @@ class PurchaseService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous) {
       throw const PurchaseException(
-        'Premium satın almak için Google hesabınla giriş yapmalısın.',
+        'Premium satın almak için hesabınla giriş yapmalısın.',
       );
     }
 
@@ -197,18 +209,26 @@ class PurchaseService {
       throw const PurchaseException('Satın alma doğrulama bilgisi boş geldi.');
     }
 
-    final response = await FirebaseFunctions.instanceFor(region: 'europe-west1')
-        .httpsCallable('verifyGooglePlayPurchase')
-        .call<Map<String, dynamic>>({
-          'productId': purchase.productID,
-          'purchaseToken': token,
-        });
+    final functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
+    final response = PurchaseService.isAppStore
+        ? await functions
+              .httpsCallable('verifyAppStorePurchase')
+              .call<Map<String, dynamic>>({
+                'productId': purchase.productID,
+                'signedTransaction': token,
+              })
+        : await functions
+              .httpsCallable('verifyGooglePlayPurchase')
+              .call<Map<String, dynamic>>({
+                'productId': purchase.productID,
+                'purchaseToken': token,
+              });
     final data = Map<String, dynamic>.from(response.data);
     final verifiedPurchase = data['purchase'];
     if (verifiedPurchase is! Map ||
         verifiedPurchase['subscriptionActive'] != true) {
       throw const PurchaseException(
-        'Google Play aboneliği aktif görünmüyor. Satın alma tamamlanmadı ve tekrar doğrulanacak.',
+        'Abonelik aktif görünmüyor. Satın alma tamamlanmadı ve tekrar doğrulanacak.',
       );
     }
   }

@@ -61,9 +61,23 @@ export function buildPlantActionPlan(context: ActionContext): PlanOutput {
   const findings = buildEvidenceFindings(context, profile);
   const signals = detectSymptomSignals(findings, context.possibleCauses);
   const cause = refineCauseFromEvidence(context.cause, findings, context.possibleCauses, signals);
-  const symptoms = symptomsFromEvidence(cause, findings, profile, signals);
-  const quickActions = buildQuickActions(context, profile, cause, findings, signals);
-  const sevenDayPlan = buildSevenDayPlan(context, profile, cause, findings, signals);
+  const symptoms = personalizeSymptoms(
+    symptomsFromEvidence(cause, findings, profile, signals),
+    context,
+    profile,
+  );
+  const quickActions = personalizeQuickActions(
+    buildQuickActions(context, profile, cause, findings, signals),
+    context,
+    profile,
+    cause,
+  );
+  const sevenDayPlan = personalizeSevenDayPlan(
+    buildSevenDayPlan(context, profile, cause, findings, signals),
+    context,
+    profile,
+    cause,
+  );
   const safetyNote = safetyNoteFor(context, profile);
   const confidenceNote = confidenceNoteFor(context, profile, findings);
 
@@ -79,13 +93,251 @@ export function buildPlantActionPlan(context: ActionContext): PlanOutput {
 
 export function looksRepeatedOrGeneric(items: string[], plantName = "", findings: string[] = []): boolean {
   const joined = items.join(" ").toLocaleLowerCase("tr");
-  const firstPlantWord = plantName.toLocaleLowerCase("tr").split(/[ (]/).find((word) => word.length >= 4) ?? "";
+  const plantWords = meaningfulWords(plantName).filter((word) => !plantNameStopWords.has(word));
+  const hasPlantWord = plantWords.some((word) => joined.includes(word));
   const hasEvidenceWord = findings.some((finding) => {
-    const words = finding.toLocaleLowerCase("tr").split(/[^a-zğüşöçıİĞÜŞÖÇ]+/).filter((word) => word.length >= 5);
+    const words = meaningfulWords(finding);
     return words.slice(0, 4).some((word) => joined.includes(word));
   });
   const genericHits = genericPhrases.filter((phrase) => joined.includes(phrase)).length;
-  return genericHits >= 2 || (firstPlantWord.length > 0 && !joined.includes(firstPlantWord) && !hasEvidenceWord);
+  return items.length === 0 ||
+    hasNearDuplicate(items) ||
+    genericHits >= 2 ||
+    (plantWords.length > 0 && !hasPlantWord && !hasEvidenceWord);
+}
+
+export function personalizePlantActionPlan(plan: PlanOutput, context: ActionContext): PlanOutput {
+  const profile = plantProfile(context.plantName, context.plantCare);
+  return {
+    ...plan,
+    symptoms: personalizeSymptoms(plan.symptoms, context, profile),
+    quickActions: personalizeQuickActions(plan.quickActions, context, profile, context.cause),
+    sevenDayPlan: personalizeSevenDayPlan(plan.sevenDayPlan, context, profile, context.cause),
+  };
+}
+
+function personalizeSymptoms(
+  symptoms: string[],
+  context: ActionContext,
+  profile: ReturnType<typeof plantProfile>,
+): string[] {
+  const symptom = String(context.answers?.symptomType ?? "").trim();
+  const duration = String(context.answers?.symptomDuration ?? "").trim();
+  if (!symptom) {
+    return symptoms;
+  }
+  const reported = symptom.toLocaleLowerCase("tr").includes("sadece kontrol") ?
+    `Kullanıcı ${profile.displayName} için belirgin bir sorun bildirmedi; sonuç koruyucu kontrol olarak yorumlandı.` :
+    `Kullanıcı ${profile.displayName} için “${symptom}” bildirdi${duration ? `; süresi “${duration}”` : ""}. Bu bilgi fotoğraf bulgularından ayrı, destekleyici geçmiş olarak değerlendirildi.`;
+  return uniqueStrings([reported, ...symptoms]).slice(0, 6);
+}
+
+function personalizeQuickActions(
+  actions: string[],
+  context: ActionContext,
+  profile: ReturnType<typeof plantProfile>,
+  cause: CauseCode,
+): string[] {
+  const contextual = [
+    symptomFollowUpAction(context, profile),
+    wateringContextAction(context, profile, cause),
+    environmentContextAction(context, profile),
+    context.answers?.hasDrainage ? drainageAction(context, profile) : undefined,
+  ].filter((item): item is string => Boolean(item));
+  if (contextual.length === 0) {
+    return actions;
+  }
+  return uniqueStrings([
+    actions[0] ?? contextual[0],
+    contextual[0],
+    ...actions.slice(1),
+    ...contextual.slice(1),
+  ]).slice(0, 4);
+}
+
+function personalizeSevenDayPlan(
+  plan: string[],
+  context: ActionContext,
+  profile: ReturnType<typeof plantProfile>,
+  cause: CauseCode,
+): string[] {
+  if (plan.length !== 7) {
+    return plan;
+  }
+  const personalized = [...plan];
+  const watering = wateringContextAction(context, profile, cause);
+  const environment = environmentContextAction(context, profile);
+  const symptom = symptomProgressCheckAction(context, profile);
+  if (watering) {
+    personalized[1] = `2. Gün: ${watering}`;
+  }
+  if (environment) {
+    personalized[2] = `3. Gün: ${environment}`;
+  }
+  if (symptom) {
+    personalized[4] = `5. Gün: ${symptom}`;
+  }
+  return personalized;
+}
+
+function wateringContextAction(
+  context: ActionContext,
+  profile: ReturnType<typeof plantProfile>,
+  cause: CauseCode,
+): string | undefined {
+  const lastWatered = String(context.answers?.lastWatered ?? "").toLocaleLowerCase("tr");
+  if (!lastWatered) {
+    return undefined;
+  }
+  if (lastWatered.includes("bugün")) {
+    return `${profile.displayName}: bugün suladığını belirttin; tekrar su verme. Fazla suyun akıp akmadığını ve ${profile.organ.focus} bölgesinde kötüleşme olup olmadığını izle.`;
+  }
+  if (lastWatered.includes("1-3")) {
+    return `${profile.displayName}: son sulama 1-3 gün önceydi; takvime göre tekrar sulama yapma, ${profile.soilTrigger} ve ${profile.organ.stressSignal.toLocaleLowerCase("tr")} birlikte oluşursa karar ver.`;
+  }
+  if (lastWatered.includes("4-7")) {
+    const caution = cause === "overwatering" || cause === "root_stress" ?
+      "Fotoğraftaki fazla nem/kök stresi ihtimali nedeniyle yalnız geçen güne bakıp su verme." :
+      "Toprağı ve bitki dokusunu birlikte kontrol et; yalnız geçen güne bakıp su verme.";
+    return `${profile.displayName}: son sulama 4-7 gün önceydi. ${caution}`;
+  }
+  if (lastWatered.includes("hatırlam")) {
+    return `${profile.displayName}: son sulama tarihi bilinmiyor; bugün saksı ağırlığını ve toprak durumunu not et, sonraki sulamayı ${profile.soilTrigger} planla.`;
+  }
+  return undefined;
+}
+
+function environmentContextAction(
+  context: ActionContext,
+  profile: ReturnType<typeof plantProfile>,
+): string | undefined {
+  const location = String(context.answers?.location ?? "").toLocaleLowerCase("tr");
+  const sunlight = String(context.answers?.sunlight ?? "").toLocaleLowerCase("tr");
+  if (!location && !sunlight) {
+    return undefined;
+  }
+  const place = location.includes("outdoor") || location.includes("dış") ? "dış mekânda" : "iç mekânda";
+  const indirect = sunlight.includes("direkt değil") || sunlight.includes("dolaylı");
+  if (sunlight.includes("direkt") && !indirect) {
+    return `${profile.displayName}: ${place} direkt güneş aldığını belirttin; yeni yanık/renk açılması oluşuyorsa öğle güneşini kademeli filtrele, aynı gün sık yer değiştirme.`;
+  }
+  if (sunlight.includes("az ışık")) {
+    return `${profile.displayName}: ${place} az ışık aldığını belirttin; ${profile.organ.primary} formunu izleyerek daha aydınlık ama yakıcı olmayan konuma kademeli taşı.`;
+  }
+  if (sunlight.includes("aydınlık")) {
+    return `${profile.displayName}: ${place} aydınlık ve dolaylı ışık düzenini 7 gün sabit tut; ${profile.organ.focus} değişimini aynı açıdan karşılaştır.`;
+  }
+  return `${profile.displayName}: ${place} bulunduğu koşulu fotoğraf takibinde sabit tut; ${profile.light}`;
+}
+
+function symptomFollowUpAction(
+  context: ActionContext,
+  profile: ReturnType<typeof plantProfile>,
+): string | undefined {
+  const symptom = String(context.answers?.symptomType ?? "").toLocaleLowerCase("tr");
+  const duration = String(context.answers?.symptomDuration ?? "").trim();
+  const durationText = duration ? ` (${duration})` : "";
+  if (symptom.includes("sararma") || symptom.includes("solma")) {
+    return `${profile.displayName}: bildirilen sararma/solmayı${durationText} aynı yaprak veya gövde üzerinde işaretleyip renk ve duruş değişimini karşılaştır.`;
+  }
+  if (symptom.includes("leke") || symptom.includes("çürüme")) {
+    return `${profile.displayName}: bildirilen leke/çürümeyi${durationText} yakın çekimle kaydet; sınır büyümesi, yumuşama veya koku varsa sulamayı ertele ve bitkiyi ayrı gözlemle.`;
+  }
+  if (symptom.includes("böcek") || symptom.includes("yapışkan")) {
+    return `${profile.displayName}: bildirilen böcek/yapışkanlık için${durationText} ${profile.organ.focus} bölgesini yakın çek; hareketli veya pamuksu iz görürsen diğer bitkilerden ayır.`;
+  }
+  if (symptom.includes("sadece kontrol")) {
+    return `${profile.displayName}: belirgin sorun bildirmediğin için yeni müdahale yapma; ${profile.organ.healthySignal.toLocaleLowerCase("tr")}; aynı görünüm devam ediyor mu izle.`;
+  }
+  return undefined;
+}
+
+function symptomProgressCheckAction(
+  context: ActionContext,
+  profile: ReturnType<typeof plantProfile>,
+): string | undefined {
+  const symptom = String(context.answers?.symptomType ?? "").toLocaleLowerCase("tr");
+  const duration = String(context.answers?.symptomDuration ?? "").trim();
+  const history = durationPhrase(duration);
+  if (symptom.includes("sararma") || symptom.includes("solma")) {
+    return `${profile.displayName}: ${history} sararma/solmayı ilk fotoğrafla karşılaştır; renk alanı genişliyor veya duruş kötüleşiyorsa yeni yakın çekim al.`;
+  }
+  if (symptom.includes("leke") || symptom.includes("çürüme")) {
+    return `${profile.displayName}: ${history} lekenin sınırını ilk fotoğrafla karşılaştır; büyüme, yumuşama veya koku varsa kök/saksı çevresini de görüntüle.`;
+  }
+  if (symptom.includes("böcek") || symptom.includes("yapışkan")) {
+    return `${profile.displayName}: ${history} böcek/yapışkanlık bölgesini yeniden yakın çek; iz sayısı artıyorsa bitkiyi ayrı tutup uzman doğrulaması al.`;
+  }
+  if (symptom.includes("sadece kontrol")) {
+    return `${profile.displayName}: ilk fotoğrafla karşılaştır; ${profile.organ.healthySignal.toLocaleLowerCase("tr")}; yeni belirti yoksa mevcut düzeni koru.`;
+  }
+  return undefined;
+}
+
+function durationPhrase(value: string): string {
+  const duration = value.toLocaleLowerCase("tr");
+  if (duration.includes("bugün")) {
+    return "bugün fark edilen";
+  }
+  if (duration.includes("birkaç")) {
+    return "birkaç gündür izlenen";
+  }
+  if (duration.includes("1 hafta") || duration.includes("haftadan fazla")) {
+    return "bir haftadan uzun süredir izlenen";
+  }
+  if (duration.includes("bilmi")) {
+    return "süresi bilinmeyen";
+  }
+  return "bildirilen";
+}
+
+const plantNameStopWords = new Set([
+  "muhtemelen",
+  "olabilir",
+  "bitkisi",
+  "bitki",
+  "belirsiz",
+  "türü",
+]);
+
+const similarityStopWords = new Set([
+  ...plantNameStopWords,
+  "bugün",
+  "gün",
+  "için",
+  "olan",
+  "olarak",
+  "kontrol",
+  "tekrar",
+  "görünüm",
+  "bitkinin",
+  "yapma",
+  "varsa",
+]);
+
+function meaningfulWords(value: string): string[] {
+  return value.toLocaleLowerCase("tr")
+    .split(/[^a-zçğıöşü]+/)
+    .filter((word) => word.length >= 4);
+}
+
+function hasNearDuplicate(items: string[]): boolean {
+  const tokenSets = items.map((item) => new Set(
+    meaningfulWords(item).filter((word) => !similarityStopWords.has(word)),
+  ));
+  for (let left = 0; left < tokenSets.length; left += 1) {
+    for (let right = left + 1; right < tokenSets.length; right += 1) {
+      const smaller = Math.min(tokenSets[left].size, tokenSets[right].size);
+      if (smaller < 3) {
+        continue;
+      }
+      const overlap = [...tokenSets[left]].filter((word) => tokenSets[right].has(word)).length;
+      if (overlap / smaller >= 0.75) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function buildEvidenceFindings(context: ActionContext, profile: ReturnType<typeof plantProfile>): string[] {
@@ -371,10 +623,11 @@ function symptomActionFor(
 }
 
 function plantProfile(plantName: string, plantCare?: PlantCareEntry) {
-  const name = plantCare?.commonNames[0] ?? (plantName || "Bitkin");
+  const name = plantCare?.commonNames[0] ?? cleanPlantDisplayName(plantName);
   const id = plantCare?.id ?? "";
   const latin = plantCare?.latinName.toLocaleLowerCase("tr") ?? "";
   const category = plantCare?.category.toLocaleLowerCase("tr") ?? "";
+  const displayKey = name.toLocaleLowerCase("tr");
   const kind = plantCareKind(plantCare);
 
   const base = {
@@ -388,7 +641,7 @@ function plantProfile(plantName: string, plantCare?: PlantCareEntry) {
     cleaningAction: `${name} yaprak/gövde yüzeyindeki tozu nazikçe al; sağlıklı dokuyu kesme.`,
   };
 
-  if (id === "euphorbia-trigona" || latin.includes("euphorbia")) {
+  if (id === "euphorbia-trigona" || latin.includes("euphorbia") || displayKey.includes("süt ağacı")) {
     return {
       ...base,
       organ: {
@@ -404,7 +657,7 @@ function plantProfile(plantName: string, plantCare?: PlantCareEntry) {
     };
   }
 
-  if (id === "opuntia") {
+  if (id === "opuntia" || displayKey.includes("opuntia") || displayKey.includes("tavşan kulağı")) {
     return {
       ...base,
       organ: {
@@ -420,7 +673,7 @@ function plantProfile(plantName: string, plantCare?: PlantCareEntry) {
     };
   }
 
-  if (category.includes("cactus")) {
+  if (category.includes("cactus") || displayKey.includes("kaktüs")) {
     return {
       ...base,
       organ: {
@@ -436,7 +689,8 @@ function plantProfile(plantName: string, plantCare?: PlantCareEntry) {
     };
   }
 
-  if (id === "pasa-kilici" || latin.includes("trifasciata")) {
+  if (id === "pasa-kilici" || latin.includes("trifasciata") ||
+    displayKey.includes("paşa kılıcı") || displayKey.includes("kayınvalide dili")) {
     return {
       ...base,
       organ: {
@@ -452,7 +706,7 @@ function plantProfile(plantName: string, plantCare?: PlantCareEntry) {
     };
   }
 
-  if (id.includes("orkide") || latin.includes("phalaenopsis")) {
+  if (id.includes("orkide") || latin.includes("phalaenopsis") || displayKey.includes("orkide")) {
     return {
       ...base,
       organ: {
@@ -468,7 +722,7 @@ function plantProfile(plantName: string, plantCare?: PlantCareEntry) {
     };
   }
 
-  if (id === "baris-cicegi" || latin.includes("spathiphyllum")) {
+  if (id === "baris-cicegi" || latin.includes("spathiphyllum") || displayKey.includes("barış çiçeği")) {
     return {
       ...base,
       organ: {
@@ -526,7 +780,8 @@ function wateringAction(profile: ReturnType<typeof plantProfile>, cause: CauseCo
 
 function lightAction(context: ActionContext, profile: ReturnType<typeof plantProfile>): string {
   const sunlight = String(context.answers?.sunlight ?? "").toLocaleLowerCase("tr");
-  if (sunlight.includes("direkt") && profile.kind === "dry") {
+  const indirect = sunlight.includes("direkt değil") || sunlight.includes("dolaylı");
+  if (sunlight.includes("direkt") && !indirect && profile.kind === "dry") {
     return `${profile.displayName}: yakıcı öğle güneşi yerine çok aydınlık, filtreli ışıkta sabit tut.`;
   }
   return `${profile.displayName}: ${profile.light}`;
@@ -582,6 +837,13 @@ function refineCauseFromEvidence(
     return "unknown";
   }
   return cause;
+}
+
+function cleanPlantDisplayName(value: string): string {
+  const cleaned = value.trim()
+    .replace(/^(muhtemelen|büyük olasılıkla|olası)\s*[:\-]?\s*/i, "")
+    .trim();
+  return cleaned || "Bitkin";
 }
 
 function rewriteGenericSubject(plantName: string, displayName: string) {

@@ -70,7 +70,7 @@ export function buildPlantCarePromptBlock(): string {
     "Çiçek Doktoru bakım arşivi sulama kuralları:",
     principles,
     "",
-    "Türkiye'de yaygın saksı/balkon bitkilerinde türü fotoğraftan olabildiğince doğru tahmin et. Tam 100 bitkilik bakım arşivi backend tarafında eşleşmeden sonra uygulanır; bu yüzden gereksiz uzun bitki listesi yazma.",
+    "Türkiye'de yaygın saksı/balkon bitkilerinde türü fotoğraftan olabildiğince doğru tahmin et. 131 bitkilik bakım arşivi backend tarafında eşleşmeden sonra uygulanır; bu yüzden gereksiz uzun bitki listesi yazma.",
     "Kaktüs/sukulent/paşa kılıcı gibi kuru seven türlerde tamamen kuruluk; barış çiçeği/calathea/eğrelti gibi nem seven türlerde üst toprak kuruluğu ve yaprak formu üzerinden öneri ver.",
     "Sulama gün aralığını kesin emir gibi değil, fotoğraf ve kullanıcı cevabıyla birlikte kontrol hatırlatması gibi yaz.",
   ].join("\n");

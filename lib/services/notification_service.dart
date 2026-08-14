@@ -1,15 +1,34 @@
+import 'dart:convert';
 import 'dart:math';
 
+import 'package:app_settings/app_settings.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../models/care_task.dart';
+
+enum NotificationPermissionState { authorized, denied, notDetermined }
+
+class NotificationNavigationIntent {
+  const NotificationNavigationIntent({
+    required this.kind,
+    this.taskId,
+    this.plantId,
+  });
+
+  final String kind;
+  final String? taskId;
+  final String? plantId;
+
+  bool get isCareReminder => kind == 'care';
+}
 
 class NotificationService {
   NotificationService._();
@@ -19,38 +38,101 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+  Future<void>? _initialization;
+  ValueChanged<NotificationNavigationIntent>? _navigationHandler;
+  NotificationNavigationIntent? _pendingNavigationIntent;
   static const _wateringCalculatorRemindersKey =
       'watering_calculator_reminders';
+  static const _scheduledCareReminderIdsKey = 'scheduled_care_reminder_ids';
 
-  Future<void> initialize() async {
+  Future<void> initialize({
+    ValueChanged<NotificationNavigationIntent>? onNotificationTap,
+  }) async {
+    if (onNotificationTap != null) {
+      _navigationHandler = onNotificationTap;
+      _flushPendingNavigationIntent();
+    }
     if (_initialized) {
       return;
     }
+    final currentInitialization = _initialization;
+    if (currentInitialization != null) {
+      await currentInitialization;
+      return;
+    }
 
+    final initialization = _initializePlugin();
+    _initialization = initialization;
+    try {
+      await initialization;
+    } finally {
+      _initialization = null;
+    }
+  }
+
+  Future<void> _initializePlugin() async {
     tz.initializeTimeZones();
-    tz.setLocalLocation(tz.getLocation('Europe/Istanbul'));
+    await _configureDeviceTimezone();
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
-    await _plugin.initialize(settings: settings);
+    await _plugin.initialize(
+      settings: settings,
+      onDidReceiveNotificationResponse: _onNotificationResponse,
+    );
 
-    final androidPlugin = _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    await androidPlugin?.requestNotificationsPermission();
     try {
-      await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
       await registerDeviceToken();
     } catch (error) {
       debugPrint('Push token registration skipped: $error');
     }
     FirebaseMessaging.instance.onTokenRefresh.listen(_sendTokenToBackend);
     _initialized = true;
+
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+    if (launchDetails?.didNotificationLaunchApp == true) {
+      _handlePayload(launchDetails?.notificationResponse?.payload);
+    }
+  }
+
+  Future<void> _configureDeviceTimezone() async {
+    try {
+      final deviceTimezone = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(deviceTimezone.identifier));
+    } catch (error) {
+      debugPrint('Device timezone lookup failed, using UTC: $error');
+      tz.setLocalLocation(tz.UTC);
+    }
+  }
+
+  Future<NotificationPermissionState> permissionState() async {
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+    return switch (settings.authorizationStatus) {
+      AuthorizationStatus.authorized ||
+      AuthorizationStatus.provisional => NotificationPermissionState.authorized,
+      AuthorizationStatus.denied => NotificationPermissionState.denied,
+      _ => NotificationPermissionState.notDetermined,
+    };
+  }
+
+  Future<bool> requestPermission() async {
+    await initialize();
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    await androidPlugin?.requestNotificationsPermission();
+    final settings = await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+  }
+
+  Future<void> openNotificationSettings() {
+    return AppSettings.openAppSettings(type: AppSettingsType.notification);
   }
 
   Future<void> registerDeviceToken() async {
@@ -85,24 +167,53 @@ class NotificationService {
     }
   }
 
-  Future<void> scheduleCareReminders(List<CareTask> tasks) async {
+  Future<bool> scheduleCareReminders(
+    List<CareTask> tasks, {
+    bool requestPermissionIfNeeded = false,
+  }) async {
     await initialize();
-    await _plugin.cancelAll();
+    var permission = await permissionState();
+    if (permission != NotificationPermissionState.authorized &&
+        requestPermissionIfNeeded) {
+      final granted = await requestPermission();
+      permission = granted
+          ? NotificationPermissionState.authorized
+          : NotificationPermissionState.denied;
+    }
+    if (permission != NotificationPermissionState.authorized) {
+      return false;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final previousIds =
+        prefs.getStringList(_scheduledCareReminderIdsKey) ?? const [];
+    for (final value in previousIds) {
+      final id = int.tryParse(value);
+      if (id != null) {
+        await _plugin.cancel(id: id);
+      }
+    }
 
     final now = DateTime.now();
+    final localScheduleThreshold = tz.TZDateTime.now(
+      tz.local,
+    ).add(const Duration(minutes: 2));
     final upcoming = tasks
         .where((task) => !task.completed)
         .where(
-          (task) => task.dueDate.isAfter(now.add(const Duration(minutes: 2))),
+          (task) =>
+              _careReminderTime(task.dueDate).isAfter(localScheduleThreshold),
         )
-        .take(20);
+        .take(20)
+        .toList();
 
     for (final task in upcoming) {
+      final notificationId = _notificationId(task);
       await _plugin.zonedSchedule(
-        id: _notificationId(task),
+        id: notificationId,
         title: 'Çiçek Doktoru',
         body: task.title,
-        scheduledDate: tz.TZDateTime.from(task.dueDate, tz.local),
+        scheduledDate: _careReminderTime(task.dueDate),
         notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             'care_reminders',
@@ -113,20 +224,31 @@ class NotificationService {
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        payload: task.id,
+        payload: jsonEncode({
+          'kind': 'care',
+          'taskId': task.id,
+          'plantId': task.plantId,
+        }),
       );
     }
 
+    await prefs.setStringList(
+      _scheduledCareReminderIdsKey,
+      upcoming.map(_notificationId).map((id) => '$id').toList(),
+    );
+
     await _scheduleSavedWateringCalculatorReminders(now);
+    return true;
   }
 
-  Future<void> scheduleWateringCalculatorReminder({
+  Future<bool> scheduleWateringCalculatorReminder({
     required String plantName,
     required DateTime dueDate,
     required int amountMl,
     required String intervalText,
   }) async {
     await initialize();
+    final granted = await requestPermission();
     final prefs = await SharedPreferences.getInstance();
     final reminders =
         prefs.getStringList(_wateringCalculatorRemindersKey) ?? [];
@@ -142,6 +264,9 @@ class NotificationService {
       ].join('|'),
     );
     await prefs.setStringList(_wateringCalculatorRemindersKey, reminders);
+    if (!granted) {
+      return false;
+    }
     await _plugin.cancel(id: id);
     await _scheduleWateringCalculatorNotification(
       id: id,
@@ -150,12 +275,14 @@ class NotificationService {
       amountMl: amountMl,
       intervalText: intervalText,
     );
+    return true;
   }
 
   Future<void> _scheduleSavedWateringCalculatorReminders(DateTime now) async {
     final prefs = await SharedPreferences.getInstance();
     final reminders =
         prefs.getStringList(_wateringCalculatorRemindersKey) ?? [];
+    final validReminders = <String>[];
     for (final item in reminders) {
       final parts = item.split('|');
       if (parts.length < 5) {
@@ -170,12 +297,19 @@ class NotificationService {
           !dueDate.isAfter(now.add(const Duration(minutes: 2)))) {
         continue;
       }
+      validReminders.add(item);
       await _scheduleWateringCalculatorNotification(
         id: id,
         plantName: parts[1],
         dueDate: dueDate,
         amountMl: amountMl,
         intervalText: parts[4],
+      );
+    }
+    if (!listEquals(reminders, validReminders)) {
+      await prefs.setStringList(
+        _wateringCalculatorRemindersKey,
+        validReminders,
       );
     }
   }
@@ -203,8 +337,59 @@ class NotificationService {
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      payload: 'watering-calculator-$id',
+      payload: jsonEncode({'kind': 'watering-calculator'}),
     );
+  }
+
+  tz.TZDateTime _careReminderTime(DateTime dueDate) {
+    final calendarDate = dueDate.isUtc ? dueDate : dueDate.toUtc();
+    return tz.TZDateTime(
+      tz.local,
+      calendarDate.year,
+      calendarDate.month,
+      calendarDate.day,
+      10,
+    );
+  }
+
+  void _onNotificationResponse(NotificationResponse response) {
+    _handlePayload(response.payload);
+  }
+
+  void _handlePayload(String? payload) {
+    if (payload == null || payload.isEmpty) {
+      return;
+    }
+    NotificationNavigationIntent intent;
+    try {
+      final data = jsonDecode(payload);
+      if (data is! Map) {
+        return;
+      }
+      intent = NotificationNavigationIntent(
+        kind: data['kind']?.toString() ?? 'care',
+        taskId: data['taskId']?.toString(),
+        plantId: data['plantId']?.toString(),
+      );
+    } catch (_) {
+      intent = NotificationNavigationIntent(kind: 'care', taskId: payload);
+    }
+    final handler = _navigationHandler;
+    if (handler == null) {
+      _pendingNavigationIntent = intent;
+      return;
+    }
+    handler(intent);
+  }
+
+  void _flushPendingNavigationIntent() {
+    final intent = _pendingNavigationIntent;
+    final handler = _navigationHandler;
+    if (intent == null || handler == null) {
+      return;
+    }
+    _pendingNavigationIntent = null;
+    handler(intent);
   }
 
   int _notificationId(CareTask task) {
