@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Çiçek Doktoru Admin</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Brounity Studio</p>
+          <h1>Çiçek Doktoru Admin</h1>
+          <p class="muted">
+            Kullanıcıları mail ile bul, premium durumunu güncelle ve test push gönder.
+          </p>
+        </div>
+        <button id="loginButton" class="button">Google ile giriş</button>
+      </section>
+
+      <section id="statusCard" class="card hidden">
+        <div>
+          <p class="label">Oturum</p>
+          <strong id="userEmail">-</strong>
+        </div>
+        <button id="logoutButton" class="ghost">Çıkış</button>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <div class="row">
+            <div>
+              <p class="label">Kullanıcılar</p>
+              <h2>Mail ile ara</h2>
+            </div>
+            <button id="refreshButton" class="ghost">Yenile</button>
+          </div>
+          <div class="search">
+            <input id="searchInput" placeholder="ornek@gmail.com" />
+            <button id="searchButton" class="button small">Ara</button>
+          </div>
+          <div id="usersList" class="users"></div>
+        </article>
+
+        <article class="card">
+          <p class="label">Premium</p>
+          <h2>Elle üyelik ver</h2>
+          <label>
+            Kullanıcı maili
+            <input id="premiumEmail" placeholder="kullanici@gmail.com" />
+          </label>
+          <label>
+            Plan
+            <select id="premiumPlan">
+              <option value="premium_monthly">Aylık Premium</option>
+              <option value="premium_yearly">Yıllık Premium</option>
+              <option value="free">Free yap</option>
+            </select>
+          </label>
+          <button id="premiumButton" class="button">Kaydet</button>
+        </article>
+
+        <article class="card">
+          <p class="label">Teşhis hakkı</p>
+          <h2>Ek hak güncelle</h2>
+          <label>
+            Kullanıcı maili
+            <input id="creditsEmail" placeholder="kullanici@gmail.com" />
+          </label>
+          <label>
+            Ek teşhis hakkı
+            <input id="creditsAmount" type="number" min="0" max="10000" value="10" />
+          </label>
+          <p class="hint">
+            Bu alan Firebase’deki rewardCredits değerini günceller. dailyFreeUsed
+            kullanılmış ücretsiz hakkı gösterir.
+          </p>
+          <button id="creditsButton" class="button">Hakkı güncelle</button>
+        </article>
+
+        <article class="card">
+          <p class="label">Bildirim</p>
+          <h2>Test push gönder</h2>
+          <label>
+            Kullanıcı maili
+            <input id="pushEmail" placeholder="kullanici@gmail.com" />
+          </label>
+          <label>
+            Başlık
+            <input id="pushTitle" value="Çiçek Doktoru" />
+          </label>
+          <label>
+            Mesaj
+            <textarea id="pushBody">Bitkilerin için yeni bir bakım hatırlatması var.</textarea>
+          </label>
+          <button id="pushButton" class="button">Push gönder</button>
+        </article>
+      </section>
+
+      <p id="toast" class="toast hidden"></p>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,151 @@
+{
+  "project_info": {
+    "project_number": "949168519770",
+    "firebase_url": "https://brounitystudio-d59af-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "brounitystudio-d59af",
+    "storage_bucket": "brounitystudio-d59af.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:949168519770:android:12d47e1d90349bb1903663",
+        "android_client_info": {
+          "package_name": "com.brounitystudio.bilgifelek"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "949168519770-7vcteas0i8r5kccu4q0eb257lo3himll.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.brounitystudio.bilgifelek",
+            "certificate_hash": "ebca34dfc04475935a0bbb07e261da5e1c159819"
+          }
+        },
+        {
+          "client_id": "949168519770-u4p5ca4m0pi83jfca7ksvn2uv6056a99.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCaBNrjmmGtEI2GGm06sbpqrHQz4af2BHM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "949168519770-u4p5ca4m0pi83jfca7ksvn2uv6056a99.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "949168519770-04sd4g3uqdm3kf073p9g63sipfjb5ro3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.cicekdoktoru.cicekDoktoru"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:949168519770:android:682ea4bc6f59d8d6903663",
+        "android_client_info": {
+          "package_name": "com.brounitystudio.cicek_doktoru"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "949168519770-1o49teetdboheuo2di2l1f5idm20dilf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.brounitystudio.cicek_doktoru",
+            "certificate_hash": "ebca34dfc04475935a0bbb07e261da5e1c159819"
+          }
+        },
+        {
+          "client_id": "949168519770-a2dd534996cb9ak1smlh4kremtpgla87.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.brounitystudio.cicek_doktoru",
+            "certificate_hash": "14ff969cbde235ebf4667aa7f193c56537f830b3"
+          }
+        },
+        {
+          "client_id": "949168519770-c426smotraqdbhbriso845ro5u9vth51.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.brounitystudio.cicek_doktoru",
+            "certificate_hash": "c76f0f9f3b95a7ff1ba6b022481961684bf127f7"
+          }
+        },
+        {
+          "client_id": "949168519770-u4p5ca4m0pi83jfca7ksvn2uv6056a99.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCaBNrjmmGtEI2GGm06sbpqrHQz4af2BHM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "949168519770-u4p5ca4m0pi83jfca7ksvn2uv6056a99.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "949168519770-04sd4g3uqdm3kf073p9g63sipfjb5ro3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.cicekdoktoru.cicekDoktoru"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:949168519770:android:10e0340b3b1cf5cb903663",
+        "android_client_info": {
+          "package_name": "com.brounitystudio.duamatik"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "949168519770-u4p5ca4m0pi83jfca7ksvn2uv6056a99.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCaBNrjmmGtEI2GGm06sbpqrHQz4af2BHM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "949168519770-u4p5ca4m0pi83jfca7ksvn2uv6056a99.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "949168519770-04sd4g3uqdm3kf073p9g63sipfjb5ro3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.cicekdoktoru.cicekDoktoru"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
