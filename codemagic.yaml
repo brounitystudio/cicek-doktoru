@@ -6,9 +6,6 @@ workflows:
     integrations:
       app_store_connect: cicek-doktoru
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.cicekdoktoru.cicekDoktoru
       vars:
         APP_STORE_APPLE_ID: 6787075776
       flutter: stable
@@ -17,8 +14,17 @@ workflows:
     scripts:
       - name: Flutter paketlerini hazırla
         script: flutter pub get
+      - name: iOS imzalama anahtar zincirini hazırla
+        script: keychain initialize
+      - name: Güncel App Store imzalama dosyalarını hazırla
+        script: |
+          app-store-connect fetch-signing-files "com.cicekdoktoru.cicekDoktoru" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Dağıtım sertifikasını anahtar zincirine ekle
+        script: keychain add-certificates
       - name: iOS imzalama profillerini uygula
-        script: xcode-project use-profiles --project ios/Runner.xcodeproj
+        script: xcode-project use-profiles
       - name: Flutter testlerini çalıştır
         script: flutter test
       - name: App Store IPA oluştur
