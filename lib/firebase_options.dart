@@ -68,13 +68,13 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyC4cHRXVNkw5Spb5GvHRuo-y5ApMP0Bvq4',
-    appId: '1:949168519770:ios:fce1c394f403fa39903663',
+    appId: '1:949168519770:ios:0e59ea4e3f61ade4903663',
     messagingSenderId: '949168519770',
     projectId: 'brounitystudio-d59af',
     databaseURL: 'https://brounitystudio-d59af-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'brounitystudio-d59af.firebasestorage.app',
     androidClientId: '949168519770-7vcteas0i8r5kccu4q0eb257lo3himll.apps.googleusercontent.com',
-    iosClientId: '949168519770-04sd4g3uqdm3kf073p9g63sipfjb5ro3.apps.googleusercontent.com',
-    iosBundleId: 'com.cicekdoktoru.cicekDoktoru',
+    iosClientId: '949168519770-pt8km120p32cfj0o989s4nbugjq31rp5.apps.googleusercontent.com',
+    iosBundleId: 'com.brounitystudio.cicekdoktoru',
   );
 }

@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>949168519770-04sd4g3uqdm3kf073p9g63sipfjb5ro3.apps.googleusercontent.com</string>
+	<string>949168519770-pt8km120p32cfj0o989s4nbugjq31rp5.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.949168519770-04sd4g3uqdm3kf073p9g63sipfjb5ro3</string>
+	<string>com.googleusercontent.apps.949168519770-pt8km120p32cfj0o989s4nbugjq31rp5</string>
 	<key>ANDROID_CLIENT_ID</key>
 	<string>949168519770-1o49teetdboheuo2di2l1f5idm20dilf.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
@@ -15,7 +15,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.cicekdoktoru.cicekDoktoru</string>
+	<string>com.brounitystudio.cicekdoktoru</string>
 	<key>PROJECT_ID</key>
 	<string>brounitystudio-d59af</string>
 	<key>STORAGE_BUCKET</key>
@@ -31,7 +31,7 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:949168519770:ios:fce1c394f403fa39903663</string>
+	<string>1:949168519770:ios:0e59ea4e3f61ade4903663</string>
 	<key>DATABASE_URL</key>
 	<string>https://brounitystudio-d59af-default-rtdb.europe-west1.firebasedatabase.app</string>
 </dict>
