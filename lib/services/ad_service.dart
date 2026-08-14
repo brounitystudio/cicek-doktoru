@@ -140,7 +140,9 @@ class AdService {
   }
 
   Future<void> showAppOpenOnForegroundIfEligible() async {
-    if (AdConfig.adsDisabled || _isShowingAppOpen) {
+    if (AdConfig.adsDisabled ||
+        !AdConfig.appOpenAdsSupported ||
+        _isShowingAppOpen) {
       return;
     }
     final backgroundedAt = _backgroundedAt;
@@ -202,7 +204,10 @@ class AdService {
   }
 
   Future<void> loadAppOpenAd() async {
-    if (AdConfig.adsDisabled || _appOpenLoadInProgress || _appOpenAd != null) {
+    if (AdConfig.adsDisabled ||
+        !AdConfig.appOpenAdsSupported ||
+        _appOpenLoadInProgress ||
+        _appOpenAd != null) {
       return;
     }
     if (!await initialize()) {
