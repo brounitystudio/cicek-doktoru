@@ -1352,7 +1352,17 @@ function careTasksFor(
 }
 
 function cleanTaskTitle(value: string): string {
-  return value.replace(/^\s*\d+\.\s*Gün:\s*/i, "").trim();
+  const clean = value
+    .replace(/^\s*\d+\.\s*Gün:\s*/i, "")
+    .replace(/^[^:]{2,48}:\s*/, "")
+    .split(";")[0]
+    .trim()
+    .replace(/[.!?:;,]+$/g, "");
+  if (clean.length <= 120) {
+    return clean;
+  }
+  const shortened = clean.slice(0, 117).replace(/\s+\S*$/, "").trim();
+  return `${shortened}…`;
 }
 
 function taskTypeFor(diagnosis: {quickActions: string[]; healthScore: number}): string {

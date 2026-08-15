@@ -2,14 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../models/diagnosis_result.dart';
 import '../models/plant.dart';
 import '../services/plant_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_card.dart';
-import '../widgets/health_score_card.dart';
+import '../widgets/premium_care_tips.dart';
 import 'scan_plant_screen.dart';
 
 class PlantDetailScreen extends StatelessWidget {
@@ -88,38 +87,10 @@ class _PlantDetailBodyState extends State<_PlantDetailBody> {
             imagePath: plant.imagePath ?? plant.diagnosis.imagePath,
           ),
           const SizedBox(height: 16),
-          HealthScoreCard(
-            score: plant.diagnosis.healthScore,
-            status: plant.healthStatus,
-          ),
-          const SizedBox(height: 14),
-          _ProfileCard(plant: plant),
-          _WateringGuideCard(plant: plant),
-          if (plant.diagnosis.careProfile != null)
-            _LibraryCareProfileCard(profile: plant.diagnosis.careProfile!),
-          _Section(title: 'Sağlık geçmişi', text: _healthHistoryText(plant)),
-          _Section(
-            title: 'Son teşhis sonucu',
-            text: plant.diagnosis.actions.isEmpty
-                ? 'Son teşhiste özel aksiyon bulunamadı.'
-                : plant.diagnosis.actions.join('\n'),
-          ),
-          _Section(
-            title: 'Bakım görevleri',
-            text:
-                '${plant.nextTask.title}: ${plant.nextTask.dueDate.day}.${plant.nextTask.dueDate.month}.${plant.nextTask.dueDate.year}',
-          ),
-          _Section(
-            title: 'Notlar',
-            text: (plant.notes?.trim().isNotEmpty ?? false)
-                ? plant.notes!.trim()
-                : 'Bu bitki için henüz özel not eklenmedi.',
-          ),
-          _Section(
-            title: 'Önce / sonra fotoğrafları',
-            text:
-                'Aynı açıdan düzenli fotoğraf çekerek ${plant.name} gelişimini daha net takip edebilirsin.',
-          ),
+          _OverviewCard(plant: plant),
+          _CareArea(plant: plant),
+          _DiagnosisArea(actions: plant.diagnosis.actions),
+          _HistoryArea(plant: plant),
           const SizedBox(height: 6),
           AppButton(
             label: 'Tekrar Tara',
@@ -185,30 +156,106 @@ class _PlantDetailBodyState extends State<_PlantDetailBody> {
       ).showSnackBar(SnackBar(content: Text('$error')));
     }
   }
-
-  String _healthHistoryText(Plant plant) {
-    final score = plant.diagnosis.healthScore;
-    final status = plant.healthStatus.toLowerCase();
-    final date = plant.lastDiagnosisAt;
-    final dateText = '${date.day}.${date.month}.${date.year}';
-    return '$dateText tarihinde yapılan son analizde sağlık skoru $score/100 ve durum $status görünüyor. Aynı açıdan fotoğraf ekledikçe gelişim takibi daha anlamlı hale gelir.';
-  }
 }
 
-class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({required this.plant});
+class _OverviewCard extends StatelessWidget {
+  const _OverviewCard({required this.plant});
 
   final Plant plant;
+
+  Color get _healthColor {
+    if (plant.diagnosis.healthScore >= 80) return AppColors.green;
+    if (plant.diagnosis.healthScore >= 50) return AppColors.warning;
+    return AppColors.critical;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: AppCard(
+        showPattern: false,
+        variant: AppCardVariant.elevated,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Bakım Profili', style: AppTextStyles.section),
+            Row(
+              children: [
+                SizedBox(
+                  width: 68,
+                  height: 68,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        value: plant.diagnosis.healthScore / 100,
+                        strokeWidth: 8,
+                        color: _healthColor,
+                        backgroundColor: _healthColor.withValues(alpha: .15),
+                      ),
+                      Text(
+                        '${plant.diagnosis.healthScore}',
+                        style: AppTextStyles.section.copyWith(
+                          color: _healthColor,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Bitki sağlığı', style: AppTextStyles.muted),
+                      const SizedBox(height: 3),
+                      Text(
+                        plant.healthStatus,
+                        style: AppTextStyles.title.copyWith(
+                          color: _healthColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 30),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.event_available_outlined,
+                  color: AppColors.green,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Sıradaki bakım', style: AppTextStyles.muted),
+                      const SizedBox(height: 3),
+                      Text(
+                        plant.nextTask.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.body.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _dateText(plant.nextTask.dueDate),
+                        style: AppTextStyles.muted,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 30),
+            Text('Ortam ve bakım bilgileri', style: AppTextStyles.section),
             const SizedBox(height: 12),
             _ProfileRow(
               icon: Icons.place_outlined,
@@ -237,41 +284,81 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
-class _WateringGuideCard extends StatelessWidget {
-  const _WateringGuideCard({required this.plant});
+class _CareArea extends StatelessWidget {
+  const _CareArea({required this.plant});
 
   final Plant plant;
 
   @override
   Widget build(BuildContext context) {
-    final guide = _wateringGuide(plant);
+    final profile = plant.diagnosis.careProfile;
+    final avoid = profile?.avoid.take(3).toList() ?? const <String>[];
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: AppCard(
         color: AppColors.mint.withValues(alpha: .82),
-        child: Row(
+        showPattern: false,
+        variant: AppCardVariant.tinted,
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .72),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(Icons.spa_outlined, color: AppColors.green),
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .72),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.spa_outlined, color: AppColors.green),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Bakım rehberi', style: AppTextStyles.section),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Sulama ritmi', style: AppTextStyles.section),
-                  const SizedBox(height: 6),
-                  Text(guide, style: AppTextStyles.body),
-                ],
-              ),
+            const SizedBox(height: 14),
+            _CareInfoTile(
+              icon: Icons.water_drop_outlined,
+              title: 'Sulama',
+              text: profile == null
+                  ? _wateringGuide(plant)
+                  : '${profile.watering.soilTrigger} ${profile.watering.intervalText}',
             ),
+            if (profile != null) ...[
+              _CareInfoTile(
+                icon: Icons.wb_sunny_outlined,
+                title: 'Işık',
+                text: profile.light.isEmpty
+                    ? 'Aydınlık ve dengeli bir konum önerilir.'
+                    : profile.light,
+              ),
+              if (profile.watering.note.trim().isNotEmpty)
+                _CareInfoTile(
+                  icon: Icons.info_outline,
+                  title: 'Bakım notu',
+                  text: profile.watering.note,
+                ),
+              PremiumCareTips(profile: profile),
+              if (avoid.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(top: 4),
+                  shape: const Border(),
+                  collapsedShape: const Border(),
+                  title: Text(
+                    'Kaçınılması gerekenler',
+                    style: AppTextStyles.body,
+                  ),
+                  children: avoid
+                      .map((item) => _MiniLine(text: item, warning: true))
+                      .toList(),
+                ),
+              ],
+            ],
           ],
         ),
       ),
@@ -279,58 +366,162 @@ class _WateringGuideCard extends StatelessWidget {
   }
 }
 
-class _LibraryCareProfileCard extends StatelessWidget {
-  const _LibraryCareProfileCard({required this.profile});
+class _DiagnosisArea extends StatefulWidget {
+  const _DiagnosisArea({required this.actions});
 
-  final PlantCareProfile profile;
+  final List<String> actions;
+
+  @override
+  State<_DiagnosisArea> createState() => _DiagnosisAreaState();
+}
+
+class _DiagnosisAreaState extends State<_DiagnosisArea> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    final tips = profile.specialTips.take(3).toList();
-    final avoid = profile.avoid.take(3).toList();
+    final actions = widget.actions
+        .where((action) => action.trim().isNotEmpty)
+        .toList();
+    final visible = _expanded ? actions : actions.take(1).toList();
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: AppCard(
+        color: Colors.transparent,
+        radius: 0,
+        showPattern: false,
+        variant: AppCardVariant.flat,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.auto_awesome, color: AppColors.green),
+                const Icon(Icons.fact_check_outlined, color: AppColors.green),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    'Bitkiye özel bakım profili',
-                    style: AppTextStyles.section,
-                  ),
+                  child: Text('Son teşhis', style: AppTextStyles.section),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            _CareInfoTile(
-              icon: Icons.water_drop_outlined,
-              title: 'Sulama',
-              text:
-                  '${profile.watering.soilTrigger} ${profile.watering.intervalText}',
-            ),
-            _CareInfoTile(
-              icon: Icons.wb_sunny_outlined,
-              title: 'Işık',
-              text: profile.light.isEmpty
-                  ? 'Aydınlık ve dengeli bir konum önerilir.'
-                  : profile.light,
-            ),
-            if (tips.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text('Özel bilgiler', style: AppTextStyles.muted),
-              const SizedBox(height: 8),
-              ...tips.map((tip) => _MiniLine(text: tip)),
+            if (actions.isEmpty)
+              Text(
+                'Son teşhiste özel bir bakım adımı bulunamadı.',
+                style: AppTextStyles.body,
+              )
+            else ...[
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                alignment: Alignment.topCenter,
+                child: Column(
+                  children: [
+                    for (var index = 0; index < visible.length; index++)
+                      _NumberedAction(index: index + 1, text: visible[index]),
+                  ],
+                ),
+              ),
+              if (actions.length > 1)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _expanded = !_expanded),
+                    icon: Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                    ),
+                    label: Text(
+                      _expanded
+                          ? 'Teşhisi daralt'
+                          : '${actions.length - 1} öneri daha gör',
+                    ),
+                  ),
+                ),
             ],
-            if (avoid.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text('Kaçın', style: AppTextStyles.muted),
-              const SizedBox(height: 8),
-              ...avoid.map((item) => _MiniLine(text: item, warning: true)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NumberedAction extends StatelessWidget {
+  const _NumberedAction({required this.index, required this.text});
+
+  final int index;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: AppColors.mint,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '$index',
+              style: AppTextStyles.muted.copyWith(
+                color: AppColors.darkGreen,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: AppTextStyles.body)),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryArea extends StatelessWidget {
+  const _HistoryArea({required this.plant});
+
+  final Plant plant;
+
+  @override
+  Widget build(BuildContext context) {
+    final notes = plant.notes?.trim() ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: AppCard(
+        color: AppColors.warmCream.withValues(alpha: .82),
+        showPattern: false,
+        variant: AppCardVariant.tinted,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.timeline_outlined, color: AppColors.green),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Gelişim takibi', style: AppTextStyles.section),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${_dateText(plant.lastDiagnosisAt)} tarihli analiz: '
+              '${plant.diagnosis.healthScore}/100 · ${plant.healthStatus}',
+              style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Aynı açıdan düzenli fotoğraf çekerek ${plant.name} gelişimini karşılaştırabilirsin.',
+              style: AppTextStyles.muted,
+            ),
+            if (notes.isNotEmpty) ...[
+              const Divider(height: 28),
+              Text('Notun', style: AppTextStyles.muted),
+              const SizedBox(height: 5),
+              Text(notes, style: AppTextStyles.body),
             ],
           ],
         ),
@@ -598,6 +789,10 @@ String _valueOrEmpty(String? value, String fallback) {
   return value?.trim().isNotEmpty == true ? value!.trim() : fallback;
 }
 
+String _dateText(DateTime date) {
+  return '${date.day}.${date.month}.${date.year}';
+}
+
 String _wateringGuide(Plant plant) {
   final name = plant.name.toLowerCase();
   if (name.contains('paşa') ||
@@ -658,29 +853,5 @@ class _PlantHeroImage extends StatelessWidget {
     }
 
     return fallback;
-  }
-}
-
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.text});
-
-  final String title;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: AppCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: AppTextStyles.section),
-            const SizedBox(height: 8),
-            Text(text, style: AppTextStyles.body),
-          ],
-        ),
-      ),
-    );
   }
 }

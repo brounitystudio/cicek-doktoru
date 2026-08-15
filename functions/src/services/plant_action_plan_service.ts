@@ -122,7 +122,7 @@ function personalizeSymptoms(
   profile: ReturnType<typeof plantProfile>,
 ): string[] {
   const symptom = String(context.answers?.symptomType ?? "").trim();
-  const duration = String(context.answers?.symptomDuration ?? "").trim();
+  const duration = meaningfulDuration(context.answers?.symptomDuration);
   if (!symptom) {
     return symptoms;
   }
@@ -145,14 +145,14 @@ function personalizeQuickActions(
     context.answers?.hasDrainage ? drainageAction(context, profile) : undefined,
   ].filter((item): item is string => Boolean(item));
   if (contextual.length === 0) {
-    return actions;
+    return uniqueActionsByTopic(actions).slice(0, 3);
   }
-  return uniqueStrings([
+  return uniqueActionsByTopic([
     actions[0] ?? contextual[0],
     contextual[0],
     ...actions.slice(1),
     ...contextual.slice(1),
-  ]).slice(0, 4);
+  ]).slice(0, 3);
 }
 
 function personalizeSevenDayPlan(
@@ -235,7 +235,7 @@ function symptomFollowUpAction(
   profile: ReturnType<typeof plantProfile>,
 ): string | undefined {
   const symptom = String(context.answers?.symptomType ?? "").toLocaleLowerCase("tr");
-  const duration = String(context.answers?.symptomDuration ?? "").trim();
+  const duration = meaningfulDuration(context.answers?.symptomDuration);
   const durationText = duration ? ` (${duration})` : "";
   if (symptom.includes("sararma") || symptom.includes("solma")) {
     return `${profile.displayName}: bildirilen sararma/solmayı${durationText} aynı yaprak veya gövde üzerinde işaretleyip renk ve duruş değişimini karşılaştır.`;
@@ -257,8 +257,7 @@ function symptomProgressCheckAction(
   profile: ReturnType<typeof plantProfile>,
 ): string | undefined {
   const symptom = String(context.answers?.symptomType ?? "").toLocaleLowerCase("tr");
-  const duration = String(context.answers?.symptomDuration ?? "").trim();
-  const history = durationPhrase(duration);
+  const history = durationPhrase(meaningfulDuration(context.answers?.symptomDuration));
   if (symptom.includes("sararma") || symptom.includes("solma")) {
     return `${profile.displayName}: ${history} sararma/solmayı ilk fotoğrafla karşılaştır; renk alanı genişliyor veya duruş kötüleşiyorsa yeni yakın çekim al.`;
   }
@@ -274,8 +273,17 @@ function symptomProgressCheckAction(
   return undefined;
 }
 
-function durationPhrase(value: string): string {
-  const duration = value.toLocaleLowerCase("tr");
+function meaningfulDuration(value: unknown): string | undefined {
+  const duration = String(value ?? "").trim();
+  const normalized = duration.toLocaleLowerCase("tr");
+  if (!duration || /bilmi|hatırla|emin değil|belirsiz|yok/.test(normalized)) {
+    return undefined;
+  }
+  return duration;
+}
+
+function durationPhrase(value: string | undefined): string {
+  const duration = value?.toLocaleLowerCase("tr") ?? "";
   if (duration.includes("bugün")) {
     return "bugün fark edilen";
   }
@@ -285,10 +293,41 @@ function durationPhrase(value: string): string {
   if (duration.includes("1 hafta") || duration.includes("haftadan fazla")) {
     return "bir haftadan uzun süredir izlenen";
   }
-  if (duration.includes("bilmi")) {
-    return "süresi bilinmeyen";
-  }
   return "bildirilen";
+}
+
+function uniqueActionsByTopic(items: string[]): string[] {
+  const seenTopics = new Set<string>();
+  const result: string[] = [];
+  for (const action of uniqueStrings(items)) {
+    const topic = actionTopic(action);
+    if (topic !== "other" && seenTopics.has(topic)) {
+      continue;
+    }
+    seenTopics.add(topic);
+    result.push(action);
+  }
+  return result;
+}
+
+function actionTopic(value: string): "observe" | "light" | "water" | "pest" | "care" | "other" {
+  const text = value.toLocaleLowerCase("tr");
+  if (/böcek|zararlı|pamuksu|yapışkan|izole|ayır/.test(text)) {
+    return "pest";
+  }
+  if (/ışık|güneş|aydınlık|konum|gölge/.test(text)) {
+    return "light";
+  }
+  if (/fotoğraf|yakın çek|aynı açı|karşılaştır|işaretle|sınır.*büyü|gözlem/.test(text)) {
+    return "observe";
+  }
+  if (/sula|saksı ağırlığı|toprak|drenaj|kuruluk|nemli|nem seviyesi/.test(text)) {
+    return "water";
+  }
+  if (/temiz|budama|makas|yaprak al|gübre/.test(text)) {
+    return "care";
+  }
+  return "other";
 }
 
 const plantNameStopWords = new Set([

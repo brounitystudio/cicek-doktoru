@@ -102,4 +102,29 @@ assert.equal(personalized.sevenDayPlan[0], aiPlan.sevenDayPlan[0]);
 assert.match(personalized.sevenDayPlan[1], /bugün suladığını/i);
 assert.match(personalized.sevenDayPlan[4], /birkaç gündür izlenen sararma/i);
 
+const unknownDuration = personalizePlantActionPlan({
+  ...aiPlan,
+  quickActions: [
+    "Muz bitkisi için yaprak nemini ve toprak kuruluğunu kontrol et.",
+    "Saksı toprağının üst kısmı kuruduysa sulama yap.",
+    "Leke sınırını aynı açıdan fotoğrafla karşılaştır.",
+    "Aydınlık ve dolaylı ışıkta konumu sabit tut.",
+  ],
+}, {
+  ...base,
+  plantName: "Muz Ağacı (Musa)",
+  cause: "unknown",
+  answers: {
+    location: "indoor",
+    lastWatered: "Hatırlamıyorum",
+    sunlight: "Aydınlık ama direkt değil",
+    hasDrainage: "Bilmiyorum",
+    symptomType: "Leke / çürüme",
+    symptomDuration: "Bilmiyorum",
+  },
+});
+assert.ok(unknownDuration.quickActions.length <= 3);
+assert.doesNotMatch(unknownDuration.quickActions.join(" "), /Bilmiyorum|süresi bilinmeyen/i);
+assert.doesNotMatch(unknownDuration.symptoms.join(" "), /süresi “Bilmiyorum”/i);
+
 console.log("Personalization checks passed.");

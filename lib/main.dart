@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -23,8 +24,10 @@ import 'screens/settings_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/water_calculator_screen.dart';
-import 'services/firebase_bootstrap.dart';
 import 'services/ad_service.dart';
+import 'services/analytics_service.dart';
+import 'services/entitlement_service.dart';
+import 'services/firebase_bootstrap.dart';
 import 'services/language_service.dart';
 import 'services/notification_service.dart';
 import 'services/plant_repository.dart';
@@ -33,10 +36,19 @@ import 'theme/app_theme.dart';
 import 'widgets/premium_bottom_nav.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+FirebaseAnalyticsObserver? appAnalyticsObserver;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await FirebaseBootstrap.ensureInitialized();
+  final firebaseReady = await FirebaseBootstrap.ensureInitialized();
+  if (firebaseReady) {
+    final analytics = FirebaseAnalytics.instance;
+    appAnalyticsObserver = FirebaseAnalyticsObserver(
+      analytics: analytics,
+      nameExtractor: _cicekScreenName,
+    );
+    unawaited(AnalyticsService.instance.initialize(analytics));
+  }
   await LanguageService.instance.initialize();
   PurchaseService.instance.initialize();
   unawaited(
@@ -53,6 +65,32 @@ Future<void> main() async {
           debugPrint('Notification initialization skipped: $error');
         }),
   );
+}
+
+String? _cicekScreenName(RouteSettings settings) {
+  final routeName = settings.name;
+  if (routeName == null) {
+    return null;
+  }
+  const knownNames = {
+    '/': 'cicek_acilis',
+    '/home': 'cicek_anasayfa',
+    '/scan': 'cicek_tara',
+    '/diagnosis-loading': 'cicek_teshis_hazirlaniyor',
+    '/diagnosis-result': 'cicek_teshis_sonucu',
+    '/plant-detail': 'cicek_bitki_detayi',
+    '/plant-archive': 'cicek_bakim_arsivi',
+    '/premium': 'cicek_premium',
+    '/legal': 'cicek_yasal_bilgiler',
+  };
+  final knownName = knownNames[routeName];
+  if (knownName != null) {
+    return knownName;
+  }
+  final normalized = routeName
+      .replaceFirst(RegExp(r'^/+'), '')
+      .replaceAll('-', '_');
+  return normalized.isEmpty ? 'cicek_acilis' : 'cicek_$normalized';
 }
 
 void _openNotificationDestination(NotificationNavigationIntent intent) {
@@ -89,6 +127,7 @@ class _CicekDoktoruAppState extends State<CicekDoktoruApp>
     if (state == AppLifecycleState.paused) {
       AdService.instance.markAppBackgrounded();
     } else if (state == AppLifecycleState.resumed) {
+      EntitlementService.notifyChanged();
       unawaited(AdService.instance.showAppOpenOnForegroundIfEligible());
     }
   }
@@ -105,6 +144,7 @@ class _CicekDoktoruAppState extends State<CicekDoktoruApp>
       animation: LanguageService.instance,
       builder: (context, _) => MaterialApp(
         navigatorKey: appNavigatorKey,
+        navigatorObservers: [?appAnalyticsObserver],
         title: LanguageService.instance.text('Çiçek Doktoru', 'Plant Doctor'),
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
@@ -156,6 +196,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
   bool _notificationArgsApplied = false;
+  bool _initialAnalyticsLogged = false;
 
   List<Widget> _pages = const [];
 
@@ -193,6 +234,10 @@ class _MainShellState extends State<MainShell> {
         const SettingsScreen(),
       ];
     }
+    if (!_initialAnalyticsLogged) {
+      _initialAnalyticsLogged = true;
+      unawaited(AnalyticsService.instance.logSectionOpened(_index));
+    }
   }
 
   @override
@@ -205,6 +250,12 @@ class _MainShellState extends State<MainShell> {
         onSelected: (value) {
           if (value == 2) {
             PlantRepository.plantsRevision.value++;
+          }
+          if (value == 4) {
+            EntitlementService.notifyChanged();
+          }
+          if (value != _index) {
+            unawaited(AnalyticsService.instance.logSectionOpened(value));
           }
           setState(() => _index = value);
         },

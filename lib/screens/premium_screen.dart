@@ -59,8 +59,8 @@ class _PremiumScreenState extends State<PremiumScreen> {
                 const SizedBox(height: 8),
                 Text(
                   context.tr(
-                    'Daha fazla teşhis, reklamsız kullanım ve detaylı bakım planları.',
-                    'More diagnoses, ad-free use and detailed care plans.',
+                    'Bitkine özel ek nedenleri, bakım sırlarını ve 7 günlük kurtarma planını aç.',
+                    'Unlock additional plant-specific causes, care insights and the full 7-day recovery plan.',
                   ),
                   style: AppTextStyles.body,
                 ),
@@ -113,8 +113,12 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       'Unlimited saved plants',
                     ),
                     context.tr(
-                      '7 günlük kurtarma planı',
-                      '7-day recovery plan',
+                      'Analizdeki ek olası nedenler ve ayrıntılı öneriler',
+                      'Additional possible causes and detailed guidance',
+                    ),
+                    context.tr(
+                      '7 günlük plan ve Premium bakım sırları',
+                      '7-day plan and Premium care insights',
                     ),
                     context.tr(
                       'Bakım takvimi ve hatırlatıcılar',
@@ -144,8 +148,12 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       'Unlimited plant archive',
                     ),
                     context.tr(
-                      'Daha geniş bakım takibi',
-                      'Extended care tracking',
+                      'Ek olası nedenler, bakım sırları ve 7 günlük plan',
+                      'Additional possible causes, care insights and the 7-day plan',
+                    ),
+                    context.tr(
+                      'Karşılaştırmalı gelişim takibi ve hatırlatmalar',
+                      'Comparative progress tracking and reminders',
                     ),
                     context.tr(
                       '12 aylık abonelik; iptal edilene kadar yıllık yenilenir',

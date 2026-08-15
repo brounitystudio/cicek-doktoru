@@ -5,6 +5,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ad_config.dart';
+import 'analytics_service.dart';
 import 'entitlement_service.dart';
 
 class AdService {
@@ -323,45 +324,76 @@ class AdService {
     }
 
     _rewardedAd = null;
-    final completer = Completer<int>();
+    final rewardCompleter = Completer<int>();
+    final dismissedCompleter = Completer<void>();
     var earnedReward = false;
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         unawaited(loadRewardedAd().catchError((_) {}));
-        if (!earnedReward && !completer.isCompleted) {
-          completer.completeError(const AdException('Reklam tamamlanmadı.'));
+        if (!dismissedCompleter.isCompleted) {
+          dismissedCompleter.complete();
+        }
+        if (!earnedReward && !rewardCompleter.isCompleted) {
+          rewardCompleter.completeError(
+            const AdException('Reklam tamamlanmadı.'),
+          );
         }
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
         unawaited(loadRewardedAd().catchError((_) {}));
-        if (!completer.isCompleted) {
-          completer.completeError(
-            const AdException('Reklam şu an açılamadı, birazdan tekrar dene.'),
-          );
+        const exception = AdException(
+          'Reklam şu an açılamadı, birazdan tekrar dene.',
+        );
+        if (!dismissedCompleter.isCompleted) {
+          dismissedCompleter.completeError(exception);
+        }
+        if (!rewardCompleter.isCompleted) {
+          rewardCompleter.completeError(exception);
         }
       },
     );
 
-    await ad.show(
-      onUserEarnedReward: (ad, reward) async {
-        earnedReward = true;
-        try {
-          final credits = await EntitlementService().grantRewardCredit();
-          if (!completer.isCompleted) {
-            completer.complete(credits);
-          }
-        } catch (error) {
-          if (!completer.isCompleted) {
-            completer.completeError(error);
-          }
-        }
-      },
-    );
+    final completionFuture =
+        Future.wait<Object?>([
+          dismissedCompleter.future,
+          rewardCompleter.future,
+        ]).timeout(
+          const Duration(minutes: 2),
+          onTimeout: () => throw const AdException(
+            'Reklam ödülü doğrulanamadı, lütfen tekrar dene.',
+          ),
+        );
 
-    return completer.future;
+    try {
+      await ad.show(
+        onUserEarnedReward: (ad, reward) async {
+          earnedReward = true;
+          try {
+            final credits = await EntitlementService().grantRewardCredit();
+            unawaited(
+              AnalyticsService.instance.logRewardEarned(credits: credits),
+            );
+            if (!rewardCompleter.isCompleted) {
+              rewardCompleter.complete(credits);
+            }
+          } catch (error, stackTrace) {
+            if (!rewardCompleter.isCompleted) {
+              rewardCompleter.completeError(error, stackTrace);
+            }
+          }
+        },
+      );
+    } catch (_) {
+      ad.dispose();
+      unawaited(loadRewardedAd().catchError((_) {}));
+      throw const AdException('Reklam şu an açılamadı, birazdan tekrar dene.');
+    }
+
+    final completed = await completionFuture;
+    return completed[1]! as int;
   }
 
   Future<void> showInterstitialAfterDiagnosisIfNeeded() async {

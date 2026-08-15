@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -40,7 +42,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _planFuture = EntitlementService().getCurrentPlan();
+    EntitlementService.revision.addListener(_handleEntitlementsChanged);
     _loadPrivacyOptionsRequirement();
+  }
+
+  void _handleEntitlementsChanged() {
+    if (mounted) {
+      unawaited(_refreshPlan());
+    }
+  }
+
+  @override
+  void dispose() {
+    EntitlementService.revision.removeListener(_handleEntitlementsChanged);
+    super.dispose();
   }
 
   Future<void> _loadPrivacyOptionsRequirement() async {
@@ -213,6 +228,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               'Email us',
                             ),
                             onTap: () => _openSupportMail(context),
+                          ),
+                          _SettingsTile(
+                            icon: Icons.chat_outlined,
+                            title: context.tr(
+                              'WhatsApp İletişim',
+                              'WhatsApp Contact',
+                            ),
+                            subtitle: '+90 850 346 58 09',
+                            onTap: () => _openSupportWhatsApp(context),
                           ),
                           if (AdminDashboardScreen.canOpen())
                             _SettingsTile(
@@ -439,6 +463,37 @@ Future<void> _openSupportMail(BuildContext context) async {
   );
 }
 
+Future<void> _openSupportWhatsApp(BuildContext context) async {
+  final user = FirebaseAuth.instance.currentUser;
+  final message = [
+    'Merhaba Çiçek Doktoru ekibi,',
+    '',
+    'Sorunum / geri bildirimim:',
+    '',
+    '---',
+    'Kullanıcı: ${user?.email ?? 'Bilinmiyor'}',
+    'Uygulama: Çiçek Doktoru',
+  ].join('\n');
+  final uri = Uri.https('wa.me', '/908503465809', {'text': message});
+
+  if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    return;
+  }
+
+  if (!context.mounted) {
+    return;
+  }
+  _showStatusNotice(
+    context,
+    icon: Icons.chat_outlined,
+    title: context.tr('WhatsApp açılamadı', 'WhatsApp could not open'),
+    message: context.tr(
+      '+90 850 346 58 09 numarasından bize ulaşabilirsin.',
+      'You can reach us at +90 850 346 58 09.',
+    ),
+  );
+}
+
 Future<void> _openStoreListing(BuildContext context) async {
   if (defaultTargetPlatform == TargetPlatform.iOS) {
     final appStoreUri = Uri.parse(
@@ -607,16 +662,18 @@ class _UserCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      email?.isNotEmpty == true
-                          ? email!
-                          : plan.isPremium
-                          ? context.tr(
-                              'Premium bakım planı aktif',
-                              'Premium care plan active',
-                            )
-                          : context.tr('Free plan', 'Free plan'),
+                      [
+                        if (email?.isNotEmpty == true) email!,
+                        plan.isPremium
+                            ? context.tr(
+                                'Premium bakım planı aktif',
+                                'Premium care plan active',
+                              )
+                            : context.tr('Ücretsiz plan', 'Free plan'),
+                      ].join('\n'),
                       style: AppTextStyles.muted.copyWith(
                         color: Colors.white70,
+                        height: 1.35,
                       ),
                     ),
                   ],

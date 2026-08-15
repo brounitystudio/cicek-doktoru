@@ -27,6 +27,7 @@ class LegalScreen extends StatelessWidget {
                 body: [
                   'Çiçek Doktoru; Apple veya Google hesabınla giriş yaptığında ad, e-posta, profil fotoğrafı, uygulama kullanım bilgileri, teşhis sonuçları, kaydettiğin bitkiler, bakım görevleri ve yüklediğin bitki fotoğraflarını saklayabilir.',
                   'Bitki fotoğrafları ve teşhis sonuçları Firebase altyapısında hesabınla ilişkilendirilir. Bu veriler uygulama deneyimini sürdürmek, bitki geçmişini göstermek, bakım hatırlatıcıları oluşturmak ve premium haklarını yönetmek için kullanılır.',
+                  'Firebase Analytics; ilk açılış, oturum, uygulama sürümü, ekran görüntüleme ve uygulama etkileşimi gibi kullanım verilerini hizmeti geliştirmek ve performansı ölçmek amacıyla işleyebilir.',
                   'Yapay zekâ analizleri için fotoğraf ve bakım cevapları güvenli backend üzerinden AI analiz servisine gönderilebilir. Analiz sonuçları kesin teşhis değildir.',
                   'Reklam gösterimi ve ödüllü reklam hakları için AdMob gibi üçüncü taraf servisler kullanılabilir. Premium kullanıcılar için reklam gösterimi kapatılabilir.',
                   'Satın alma ve abonelik bilgileri, premium haklarını doğrulamak ve yönetmek amacıyla App Store veya Google Play ile güvenli biçimde doğrulanabilir.',
@@ -48,6 +49,7 @@ class LegalScreen extends StatelessWidget {
                 body: [
                   'Veri sorumlusu ve uygulama geliştiricisi: Brounity Studio.',
                   'İletişim: brounitystudio@gmail.com',
+                  'WhatsApp: +90 850 346 58 09',
                   'Erişim ve düzeltme taleplerinde hesabında kullandığın e-posta adresini belirtmen istenebilir. Hesap silme işlemini uygulamadaki Profil ekranından doğrudan başlatabilirsin.',
                 ],
               ),

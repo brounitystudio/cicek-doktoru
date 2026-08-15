@@ -7,7 +7,7 @@ import {
 } from "@apple/app-store-server-library";
 import {HttpsError} from "firebase-functions/v2/https";
 
-const bundleId = "com.cicekdoktoru.cicekDoktoru";
+const bundleId = "com.brounitystudio.cicekdoktoru";
 const appAppleId = 6787075776;
 
 export const appStoreMonthlyProductId = "premium_monthly_109";

@@ -66,8 +66,8 @@ class _DailyPremiumOfferBottomSheet extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 context.tr(
-                  'Premium ile ayda 100 AI destekli analiz, reklamsız kullanım, sınırsız bitki kaydı ve 7 günlük detaylı bakım planları açılır.',
-                  'Premium unlocks 100 AI-assisted analyses per month, ad-free use, unlimited saved plants and detailed 7-day care plans.',
+                  'Premium ile analizdeki ek olası nedenler, bitkiye özel bakım sırları, 7 günlük plan, ayda 100 AI destekli analiz ve reklamsız kullanım açılır.',
+                  'Premium unlocks additional possible causes, plant-specific care insights, the 7-day plan, 100 AI-assisted analyses per month and ad-free use.',
                 ),
                 style: AppTextStyles.body,
               ),

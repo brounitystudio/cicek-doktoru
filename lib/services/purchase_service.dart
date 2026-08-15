@@ -5,6 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
+import 'analytics_service.dart';
+import 'entitlement_service.dart';
+
 class PurchaseCatalog {
   const PurchaseCatalog({
     required this.storeAvailable,
@@ -231,6 +234,13 @@ class PurchaseService {
         'Abonelik aktif görünmüyor. Satın alma tamamlanmadı ve tekrar doğrulanacak.',
       );
     }
+    EntitlementService.notifyChanged();
+    unawaited(
+      AnalyticsService.instance.logPremiumVerified(
+        productId: purchase.productID,
+        restored: purchase.status == PurchaseStatus.restored,
+      ),
+    );
   }
 
   void _ensureNoPendingPurchase() {

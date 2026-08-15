@@ -1,10 +1,17 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/user_plan.dart';
 import 'firebase_bootstrap.dart';
 
 class EntitlementService {
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  static void notifyChanged() {
+    revision.value = revision.value + 1;
+  }
+
   Future<UserPlan> getCurrentPlan() async {
     const useMock = bool.fromEnvironment('USE_MOCK_DIAGNOSIS');
     if (useMock) {
@@ -45,7 +52,9 @@ class EntitlementService {
           'placement': 'diagnosis_credit',
         });
     final data = Map<String, dynamic>.from(response.data);
-    return (data['rewardCredits'] as num?)?.toInt() ?? 0;
+    final credits = (data['rewardCredits'] as num?)?.toInt() ?? 0;
+    notifyChanged();
+    return credits;
   }
 }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -10,14 +11,12 @@ import '../services/language_service.dart';
 import '../services/notification_service.dart';
 import '../services/plant_safety_service.dart';
 import '../services/plant_repository.dart';
-import '../services/premium_prompt_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_card.dart';
-import '../widgets/health_score_card.dart';
-import '../widgets/locked_feature_card.dart';
 import '../widgets/paywall_bottom_sheet.dart';
+import '../widgets/premium_care_tips.dart';
 import 'plant_detail_screen.dart';
 import 'premium_screen.dart';
 import 'scan_plant_screen.dart';
@@ -35,6 +34,32 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
   bool _isSaving = false;
   bool _postDiagnosisAdChecked = false;
   String? _savedPlantId;
+  late Future<bool> _premiumFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _premiumFuture = _loadPremiumStatus();
+    EntitlementService.revision.addListener(_refreshPremiumStatus);
+  }
+
+  @override
+  void dispose() {
+    EntitlementService.revision.removeListener(_refreshPremiumStatus);
+    super.dispose();
+  }
+
+  Future<bool> _loadPremiumStatus() async {
+    final plan = await EntitlementService().getCurrentPlan();
+    return plan.isPremium;
+  }
+
+  void _refreshPremiumStatus() {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _premiumFuture = _loadPremiumStatus());
+  }
 
   @override
   void didChangeDependencies() {
@@ -57,18 +82,6 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
       return;
     }
     try {
-      final shouldShowOffer = await PremiumPromptService.instance
-          .shouldShowAfterSuccessfulDiagnosis();
-      if (!mounted) {
-        return;
-      }
-      if (shouldShowOffer) {
-        final openPremium = await showDailyPremiumOfferBottomSheet(context);
-        if (mounted && openPremium) {
-          await Navigator.of(context).pushNamed(PremiumScreen.routeName);
-        }
-        return;
-      }
       await AdService.instance.showInterstitialAfterDiagnosisIfNeeded();
     } catch (_) {
       // Monetization should never block access to a completed diagnosis.
@@ -107,111 +120,91 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
       appBar: AppBar(
         title: Text(context.tr('Teşhis Sonucu', 'Diagnosis Result')),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          _PlantImage(result: result),
-          const SizedBox(height: 16),
-          _ResultSummaryCard(result: result),
-          const SizedBox(height: 16),
-          if (!result.isPlant) ...[
-            _RetakePhotoCard(result: result),
-            const SizedBox(height: 14),
-          ] else ...[
-            HealthScoreCard(score: result.healthScore, status: result.status),
-            const SizedBox(height: 16),
-            _TrustCard(result: result),
-            const SizedBox(height: 16),
-            if (result.visualFindings.isNotEmpty)
-              _InfoCard(
-                title: context.tr(
-                  'Fotoğrafta gördüklerimiz',
-                  'What we saw in the photo',
+      body: FutureBuilder<bool>(
+        future: _premiumFuture,
+        builder: (context, snapshot) {
+          final entitlementLoaded =
+              snapshot.connectionState == ConnectionState.done;
+          final isPremium = snapshot.data == true;
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              _PlantImage(result: result),
+              const SizedBox(height: 14),
+              _ResultSummaryCard(result: result, isPremium: isPremium),
+              const SizedBox(height: 16),
+              if (!result.isPlant) ...[
+                _RetakePhotoCard(result: result),
+                const SizedBox(height: 14),
+              ] else ...[
+                _TodayActionsCard(result: result),
+                _DiagnosisDetailsSection(result: result, isPremium: isPremium),
+                if (result.needsCloseup) _RetakePhotoCard(result: result),
+                _SevenDayPlanCard(
+                  result: result,
+                  isPremium: isPremium,
+                  entitlementLoaded: entitlementLoaded,
+                  isSaving: _isSaving,
+                  onSchedule: () => _scheduleReminder(context, result),
                 ),
-                children: result.visualFindings
-                    .map((item) => _Bullet(item))
-                    .toList(),
-              ),
-            _LikelyCausesCard(result: result),
-            _RiskBadgeCard(result: result),
-            _InfoCard(
-              title: context.tr('Bugün yapılacaklar', 'What to do today'),
-              children: result.actions.map((item) => _Bullet(item)).toList(),
-            ),
-            _FollowUpTimingCard(result: result),
-            if (result.needsCloseup) _RetakePhotoCard(result: result),
-            _SevenDayPlanCard(result: result),
-            if (result.careProfile != null)
-              _CareProfileCard(profile: result.careProfile!),
-            _DiagnosisSafetyCard(plantName: result.plantName),
-            _InfoCard(
-              title: context.tr('Kaçınılması gerekenler', 'Avoid these'),
-              children: _avoidanceTips(
-                context,
-                result,
-              ).map((item) => _Bullet(item)).toList(),
-            ),
-            _InfoCard(
-              title: context.tr('Güvenli kullanım notu', 'Safety note'),
-              children: [Text(result.safetyNote, style: AppTextStyles.body)],
-            ),
-            if (result.confidenceNote != null &&
-                result.confidenceNote!.trim().isNotEmpty)
-              _InfoCard(
-                title: context.tr('Analizin sınırları', 'Analysis limits'),
-                children: [
-                  Text(result.confidenceNote!, style: AppTextStyles.body),
-                ],
-              ),
-            _PremiumAnalysisCard(result: result),
-            const SizedBox(height: 14),
-            _FollowUpComparisonCard(
-              result: result,
-              isSaving: _isSaving,
-              onSchedule: () => _scheduleReminder(context, result),
-            ),
-            const SizedBox(height: 14),
-          ],
-          if (result.isPlant) ...[
-            AppButton(
-              label: _savedPlantId == null
-                  ? context.tr('Bakım Hatırlatması Kur', 'Set Care Reminder')
-                  : context.tr('Hatırlatmaları Yenile', 'Refresh Reminders'),
-              icon: Icons.notifications_active_outlined,
-              onPressed: _isSaving
-                  ? null
-                  : () => _scheduleReminder(context, result),
-            ),
-            const SizedBox(height: 10),
-            AppButton(
-              label: _savedPlantId != null
-                  ? context.tr('Bitkilerime Kaydedildi', 'Saved to My Plants')
-                  : _isSaving
-                  ? context.tr('Kaydediliyor...', 'Saving...')
-                  : context.tr('Bitkilerime Kaydet', 'Save to My Plants'),
-              icon: _savedPlantId != null
-                  ? Icons.check_circle_outline
-                  : _isSaving
-                  ? Icons.hourglass_top_rounded
-                  : Icons.bookmark_add_outlined,
-              onPressed: _isSaving || _savedPlantId != null
-                  ? null
-                  : () => _savePlant(context, result),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () =>
-                  Navigator.of(context).popUntil((route) => route.isFirst),
-              icon: const Icon(Icons.event_repeat),
-              label: Text(
-                context.tr(
-                  '7 Gün Sonra Tekrar Kontrol Et',
-                  'Check Again in 7 Days',
+                _DiagnosisSafetyCard(plantName: result.plantName),
+                _SafetyAndLimitsSection(
+                  result: result,
+                  avoidanceTips: _avoidanceTips(context, result),
                 ),
-              ),
-            ),
-          ],
-        ],
+                const SizedBox(height: 14),
+              ],
+              if (result.isPlant) ...[
+                AppButton(
+                  label: _savedPlantId == null
+                      ? context.tr(
+                          'Bakım Hatırlatması Kur',
+                          'Set Care Reminder',
+                        )
+                      : context.tr(
+                          'Hatırlatmaları Yenile',
+                          'Refresh Reminders',
+                        ),
+                  icon: Icons.notifications_active_outlined,
+                  onPressed: _isSaving
+                      ? null
+                      : () => _scheduleReminder(context, result),
+                ),
+                const SizedBox(height: 10),
+                AppButton(
+                  label: _savedPlantId != null
+                      ? context.tr(
+                          'Bitkilerime Kaydedildi',
+                          'Saved to My Plants',
+                        )
+                      : _isSaving
+                      ? context.tr('Kaydediliyor...', 'Saving...')
+                      : context.tr('Bitkilerime Kaydet', 'Save to My Plants'),
+                  icon: _savedPlantId != null
+                      ? Icons.check_circle_outline
+                      : _isSaving
+                      ? Icons.hourglass_top_rounded
+                      : Icons.bookmark_add_outlined,
+                  onPressed: _isSaving || _savedPlantId != null
+                      ? null
+                      : () => _savePlant(context, result),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      Navigator.of(context).popUntil((route) => route.isFirst),
+                  icon: const Icon(Icons.event_repeat),
+                  label: Text(
+                    context.tr(
+                      '7 Gün Sonra Tekrar Kontrol Et',
+                      'Check Again in 7 Days',
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -552,25 +545,191 @@ class _RetakePhotoCard extends StatelessWidget {
   }
 }
 
-class _LikelyCausesCard extends StatelessWidget {
-  const _LikelyCausesCard({required this.result});
+class _TodayActionsCard extends StatelessWidget {
+  const _TodayActionsCard({required this.result});
 
   final DiagnosisResult result;
 
   @override
   Widget build(BuildContext context) {
-    final causes = result.causes.take(3).toList();
-    return _InfoCard(
-      title: context.tr('Olası nedenler', 'Possible causes'),
+    final urgent = result.healthScore < 50;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: AppCard(
+        color: AppColors.mint.withValues(alpha: .92),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.task_alt, color: AppColors.darkGreen),
+                const SizedBox(width: 10),
+                Text(
+                  context.tr('Bugün yap', 'Do today'),
+                  style: AppTextStyles.section.copyWith(
+                    color: AppColors.darkGreen,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (result.actions.isEmpty)
+              Text(
+                context.tr(
+                  'Bugün bitkiyi gözlemle ve belirgin değişiklikleri not et.',
+                  'Observe the plant today and note any visible changes.',
+                ),
+                style: AppTextStyles.body,
+              )
+            else
+              ...result.actions.map((item) => _Bullet(item)),
+            const Divider(height: 24, color: AppColors.lightGreen),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  urgent ? Icons.priority_high_rounded : Icons.event_repeat,
+                  color: urgent ? AppColors.critical : AppColors.green,
+                  size: 21,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    _followUpTiming(context, result),
+                    style: AppTextStyles.muted.copyWith(
+                      color: AppColors.darkGreen,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _followUpTiming(BuildContext context, DiagnosisResult result) {
+  if (result.healthScore < 50) {
+    return context.tr(
+      '24 saat içinde tekrar kontrol et. Hızlı yayılma, kötü koku veya gövde yumuşaması varsa uzman desteği al.',
+      'Check again within 24 hours. Seek expert help if spreading, odor or stem softening develops.',
+    );
+  }
+  if (result.healthScore < 80) {
+    return context.tr(
+      '3 gün sonra aynı açıdan fotoğrafla karşılaştır; belirti büyürse daha erken yeni analiz al.',
+      'Compare with a same-angle photo in 3 days; run a new analysis sooner if the symptom grows.',
+    );
+  }
+  return context.tr(
+    '7 gün sonra aynı açıdan fotoğrafla karşılaştır; belirgin değişiklik yoksa mevcut bakım ritmini koru.',
+    'Compare with a same-angle photo in 7 days; keep the current care rhythm if there is no clear change.',
+  );
+}
+
+class _DiagnosisDetailsSection extends StatelessWidget {
+  const _DiagnosisDetailsSection({
+    required this.result,
+    required this.isPremium,
+  });
+
+  final DiagnosisResult result;
+  final bool isPremium;
+
+  @override
+  Widget build(BuildContext context) {
+    final firstFinding = result.visualFindings.isEmpty
+        ? context.tr(
+            'Fotoğraf bulguları ve olası nedenleri incele.',
+            'Review photo findings and possible causes.',
+          )
+        : result.visualFindings.first;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 2),
+          childrenPadding: const EdgeInsets.fromLTRB(2, 4, 2, 10),
+          leading: const Icon(Icons.manage_search, color: AppColors.green),
+          title: Text(
+            context.tr('Analiz ayrıntıları', 'Analysis details'),
+            style: AppTextStyles.section,
+          ),
+          subtitle: Text(
+            firstFinding,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.muted,
+          ),
+          shape: const Border(bottom: BorderSide(color: AppColors.border)),
+          collapsedShape: const Border(
+            bottom: BorderSide(color: AppColors.border),
+          ),
+          children: [
+            if (result.visualFindings.isNotEmpty) ...[
+              _DetailHeading(
+                label: context.tr(
+                  'Fotoğrafta gördüklerimiz',
+                  'What we saw in the photo',
+                ),
+              ),
+              ...result.visualFindings.map((item) => _Bullet(item)),
+              const SizedBox(height: 8),
+            ],
+            _LikelyCausesCard(result: result, isPremium: isPremium),
+            const SizedBox(height: 10),
+            _RiskBadgeCard(result: result),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailHeading extends StatelessWidget {
+  const _DetailHeading({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        label,
+        style: AppTextStyles.muted.copyWith(
+          color: AppColors.darkGreen,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _LikelyCausesCard extends StatelessWidget {
+  const _LikelyCausesCard({required this.result, required this.isPremium});
+
+  final DiagnosisResult result;
+  final bool isPremium;
+
+  @override
+  Widget build(BuildContext context) {
+    final causes = result.causes.take(isPremium ? 3 : 1).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _DetailHeading(label: context.tr('Olası nedenler', 'Possible causes')),
         Text(
           context.tr(
-            'Yüzdeler, görünen kanıtlar içindeki göreli AI olasılığını gösterir; doğruluk garantisi değildir.',
-            'Percentages show relative AI likelihood among the visible clues; they are not an accuracy guarantee.',
+            'Yüzdeler göreli AI olasılığıdır; doğruluk garantisi değildir.',
+            'Percentages are relative AI likelihoods, not an accuracy guarantee.',
           ),
           style: AppTextStyles.muted,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         if (causes.isEmpty)
           Text(
             context.tr(
@@ -582,24 +741,26 @@ class _LikelyCausesCard extends StatelessWidget {
         else
           ...causes.map(
             (cause) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.only(bottom: 9),
               child: Row(
                 children: [
                   Expanded(child: Text(cause.title, style: AppTextStyles.body)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
+                  DecoratedBox(
                     decoration: BoxDecoration(
                       color: AppColors.mint,
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Text(
-                      '%${cause.percent}',
-                      style: AppTextStyles.muted.copyWith(
-                        color: AppColors.darkGreen,
-                        fontWeight: FontWeight.w900,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      child: Text(
+                        '%${cause.percent}',
+                        style: AppTextStyles.muted.copyWith(
+                          color: AppColors.darkGreen,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                   ),
@@ -612,113 +773,85 @@ class _LikelyCausesCard extends StatelessWidget {
   }
 }
 
-class _FollowUpTimingCard extends StatelessWidget {
-  const _FollowUpTimingCard({required this.result});
+class _SevenDayPlanCard extends StatelessWidget {
+  const _SevenDayPlanCard({
+    required this.result,
+    required this.isPremium,
+    required this.entitlementLoaded,
+    required this.isSaving,
+    required this.onSchedule,
+  });
 
   final DiagnosisResult result;
+  final bool isPremium;
+  final bool entitlementLoaded;
+  final bool isSaving;
+  final Future<void> Function() onSchedule;
 
   @override
   Widget build(BuildContext context) {
-    final urgent = result.healthScore < 50;
-    final timing = urgent
-        ? context.tr(
-            '24 saat içinde aynı açıdan kontrol et. Hızlı yayılma, kötü koku veya gövde yumuşaması varsa uzman desteği al.',
-            'Check again from the same angle within 24 hours. Seek expert help if spreading, odor or stem softening develops.',
-          )
-        : result.healthScore < 80
-        ? context.tr(
-            '3 gün sonra aynı açıdan fotoğrafla karşılaştır; belirti büyürse daha erken yeni analiz al.',
-            'Compare with a same-angle photo in 3 days; run a new analysis sooner if the symptom grows.',
-          )
-        : context.tr(
-            '7 gün sonra aynı açıdan fotoğrafla karşılaştır; belirgin değişiklik yoksa mevcut bakım ritmini koru.',
-            'Compare with a same-angle photo in 7 days; keep the current care rhythm if there is no clear change.',
-          );
-    return _InfoCard(
-      title: context.tr('Ne zaman tekrar kontrol edilmeli?', 'When to recheck'),
-      children: [
-        Row(
+    final visiblePlan = isPremium
+        ? result.sevenDayPlan
+        : result.sevenDayPlan.take(2).toList();
+    final hiddenPlan = result.sevenDayPlan.skip(2).toList();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: AppCard(
+        color: AppColors.warmCream.withValues(alpha: .9),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              urgent ? Icons.priority_high_rounded : Icons.event_repeat,
-              color: urgent ? AppColors.critical : AppColors.green,
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(timing, style: AppTextStyles.body)),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _SevenDayPlanCard extends StatelessWidget {
-  const _SevenDayPlanCard({required this.result});
-
-  final DiagnosisResult result;
-
-  @override
-  Widget build(BuildContext context) {
-    if (result.sevenDayPlan.isEmpty) {
-      return LockedFeatureCard(onTap: () => showPaywallBottomSheet(context));
-    }
-
-    return FutureBuilder(
-      future: EntitlementService().getCurrentPlan(),
-      builder: (context, snapshot) {
-        final isPremium = snapshot.data?.isPremium == true;
-        final visiblePlan = isPremium
-            ? result.sevenDayPlan
-            : result.sevenDayPlan.take(3).toList();
-        return _InfoCard(
-          title: isPremium
-              ? context.tr('7 Günlük Bakım Planı', '7-Day Care Plan')
-              : context.tr('İlk 3 Günlük Bakım Planı', 'First 3-Day Care Plan'),
-          children: [
-            ...visiblePlan.map((item) => _Bullet(item)),
-            if (!isPremium && result.sevenDayPlan.length > visiblePlan.length)
-              _PremiumPlanUnlock(
-                hiddenCount: result.sevenDayPlan.length - visiblePlan.length,
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _PremiumPlanUnlock extends StatelessWidget {
-  const _PremiumPlanUnlock({required this.hiddenCount});
-
-  final int hiddenCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => showPaywallBottomSheet(context),
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        margin: const EdgeInsets.only(top: 6),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.darkGreen,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.lock_open_outlined, color: Colors.white),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                context.tr(
-                  '$hiddenCount gün daha detay, takip ve uyarı Premium ile açılır.',
-                  '$hiddenCount more days of detail, follow-up and alerts unlock with Premium.',
+            Row(
+              children: [
+                const Icon(
+                  Icons.calendar_month_outlined,
+                  color: AppColors.green,
                 ),
-                style: AppTextStyles.muted.copyWith(color: Colors.white),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    isPremium
+                        ? context.tr('7 Günlük Bakım Planı', '7-Day Care Plan')
+                        : context.tr(
+                            'İlk 2 Günlük Bakım Planı',
+                            'First 2-Day Care Plan',
+                          ),
+                    style: AppTextStyles.section,
+                  ),
+                ),
+              ],
             ),
-            const Icon(Icons.chevron_right, color: Colors.white),
+            const SizedBox(height: 12),
+            if (visiblePlan.isEmpty)
+              Text(
+                context.tr(
+                  'Bugün için ek bir plan oluşturulmadı.',
+                  'No additional plan was created for today.',
+                ),
+                style: AppTextStyles.body,
+              )
+            else
+              ...visiblePlan.map((item) => _Bullet(item)),
+            if (!isPremium && entitlementLoaded && result.careProfile != null)
+              PremiumCareTips(
+                profile: result.careProfile!,
+                isPremiumOverride: false,
+                showLockedPreview: false,
+              ),
+            if (!isPremium && entitlementLoaded)
+              _PremiumPlanUnlock(hiddenItems: hiddenPlan),
+            if (isPremium) ...[
+              if (result.careProfile != null) ...[
+                const Divider(height: 26, color: AppColors.border),
+                _CareProfileCard(profile: result.careProfile!),
+              ],
+              const Divider(height: 26, color: AppColors.border),
+              _PremiumFollowUp(
+                result: result,
+                isSaving: isSaving,
+                onSchedule: onSchedule,
+              ),
+            ],
           ],
         ),
       ),
@@ -726,8 +859,108 @@ class _PremiumPlanUnlock extends StatelessWidget {
   }
 }
 
-class _FollowUpComparisonCard extends StatelessWidget {
-  const _FollowUpComparisonCard({
+class _PremiumPlanUnlock extends StatelessWidget {
+  const _PremiumPlanUnlock({required this.hiddenItems});
+
+  final List<String> hiddenItems;
+
+  @override
+  Widget build(BuildContext context) {
+    final hiddenCount = hiddenItems.length;
+    final premiumValue = hiddenCount > 0
+        ? context.tr(
+            '$hiddenCount günlük devam planı • ek olası nedenler • bitkiye özel bakım profili • karşılaştırmalı takip',
+            '$hiddenCount more days • additional possible causes • plant-specific care profile • comparison follow-up',
+          )
+        : context.tr(
+            'Ek olası nedenler • bitkiye özel bakım profili • karşılaştırmalı takip',
+            'Additional possible causes • plant-specific care profile • comparison follow-up',
+          );
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.darkGreen, AppColors.green],
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.workspace_premium_outlined, color: Colors.white),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  context.tr(
+                    'Premium ayrıntılı bakım',
+                    'Premium detailed care',
+                  ),
+                  style: AppTextStyles.section.copyWith(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            premiumValue,
+            style: AppTextStyles.muted.copyWith(color: Colors.white70),
+          ),
+          if (hiddenItems.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 54,
+              child: ClipRect(
+                child: ExcludeSemantics(
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: hiddenItems
+                          .take(2)
+                          .map(
+                            (item) => Text(
+                              item,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.body.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () =>
+                  Navigator.of(context).pushNamed(PremiumScreen.routeName),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.darkGreen,
+              ),
+              icon: const Icon(Icons.lock_open_outlined),
+              label: Text(
+                context.tr('Tüm bakım planını aç', 'Unlock the full care plan'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumFollowUp extends StatelessWidget {
+  const _PremiumFollowUp({
     required this.result,
     required this.isSaving,
     required this.onSchedule,
@@ -739,176 +972,36 @@ class _FollowUpComparisonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: EntitlementService().getCurrentPlan(),
-      builder: (context, snapshot) {
-        final isPremium = snapshot.data?.isPremium == true;
-        return AppCard(
-          color: isPremium ? AppColors.darkGreen : AppColors.warmCream,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    isPremium
-                        ? Icons.compare_arrows_outlined
-                        : Icons.workspace_premium_outlined,
-                    color: isPremium ? Colors.white : AppColors.darkGreen,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      context.tr(
-                        'Karşılaştırmalı takip',
-                        'Comparison follow-up',
-                      ),
-                      style: AppTextStyles.section.copyWith(
-                        color: isPremium ? Colors.white : AppColors.darkGreen,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                context.tr(
-                  '${result.plantName} için 7 gün sonra aynı açıdan fotoğraf çekip yaprak rengi, gövde duruşu ve toprak değişimini karşılaştır.',
-                  'Take another photo of ${result.plantName} from the same angle in 7 days and compare leaf color, stem posture and soil changes.',
-                ),
-                style: AppTextStyles.muted.copyWith(
-                  color: isPremium ? Colors.white70 : AppColors.muted,
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: isSaving
-                      ? null
-                      : isPremium
-                      ? () => onSchedule()
-                      : () => showPaywallBottomSheet(context),
-                  icon: Icon(
-                    isPremium
-                        ? Icons.notifications_active_outlined
-                        : Icons.lock_outline,
-                  ),
-                  label: Text(
-                    isPremium
-                        ? context.tr(
-                            'Takip hatırlatmasını kur',
-                            'Set follow-up reminder',
-                          )
-                        : context.tr(
-                            'Premium takip özelliğini aç',
-                            'Unlock Premium follow-up',
-                          ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: isPremium
-                        ? Colors.white
-                        : AppColors.darkGreen,
-                    side: BorderSide(
-                      color: isPremium ? Colors.white70 : AppColors.darkGreen,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.compare_arrows_outlined, color: AppColors.green),
+            const SizedBox(width: 9),
+            Text(
+              context.tr('Karşılaştırmalı takip', 'Comparison follow-up'),
+              style: AppTextStyles.section,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          context.tr(
+            '${result.plantName} için aynı açıdan yeni fotoğraf çekip yaprak, gövde ve toprak değişimini karşılaştır.',
+            'Take a new photo of ${result.plantName} from the same angle and compare leaf, stem and soil changes.',
           ),
-        );
-      },
-    );
-  }
-}
-
-class _TrustCard extends StatelessWidget {
-  const _TrustCard({required this.result});
-
-  final DiagnosisResult result;
-
-  @override
-  Widget build(BuildContext context) {
-    final confidence = _confidenceLabel();
-    final photoQuality = result.needsCloseup
-        ? context.tr('Daha yakın çekim iyi olur', 'A closer shot would help')
-        : context.tr('Görüntü okunabilir', 'Image is readable');
-    final nextPhoto = _nextPhotoTip(context);
-
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            context.tr('Analiz Kalitesi', 'Analysis Quality'),
-            style: AppTextStyles.section,
+          style: AppTextStyles.muted,
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: isSaving ? null : () => onSchedule(),
+          icon: const Icon(Icons.notifications_active_outlined),
+          label: Text(
+            context.tr('Takip hatırlatmasını kur', 'Set follow-up reminder'),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _TrustMetric(
-                  icon: Icons.verified_user_outlined,
-                  label: context.tr('Tahmin güveni', 'Confidence'),
-                  value: confidence,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _TrustMetric(
-                  icon: Icons.photo_camera_back_outlined,
-                  label: context.tr('Fotoğraf', 'Photo'),
-                  value: photoQuality,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(nextPhoto, style: AppTextStyles.muted),
-        ],
-      ),
-    );
-  }
-
-  String _confidenceLabel() {
-    if (result.needsCloseup) {
-      return LanguageService.instance.text('Orta', 'Medium');
-    }
-    final topConfidence = result.causes.isEmpty
-        ? 0
-        : result.causes
-              .map((cause) => cause.percent)
-              .reduce((a, b) => a > b ? a : b);
-    if (topConfidence >= 70) {
-      return LanguageService.instance.text('Yüksek', 'High');
-    }
-    if (topConfidence >= 45) {
-      return LanguageService.instance.text('Orta', 'Medium');
-    }
-    return LanguageService.instance.text('Düşük', 'Low');
-  }
-
-  String _nextPhotoTip(BuildContext context) {
-    final name = result.plantName;
-    if (result.needsCloseup) {
-      return context.tr(
-        '$name için yaprak yüzeyi, yaprak altı ve toprağı ayrı ayrı yakın çekim fotoğraflamak sonucu güçlendirir.',
-        'For $name, separate close-up photos of the leaf surface, underside and soil will strengthen the result.',
-      );
-    }
-    if (result.causes.any(
-      (cause) =>
-          cause.code == 'pot_drainage_issue' || cause.code == 'overwatering',
-    )) {
-      return context.tr(
-        'Bir sonraki kontrolde saksı altı, tabak ve toprağın üst kısmını da çekersen sulama yorumu daha netleşir.',
-        'At the next check, include the pot base, saucer and soil surface for a clearer watering comment.',
-      );
-    }
-    return context.tr(
-      'Aynı açıdan tekrar fotoğraf çekmek önce/sonra gelişim takibini daha güvenilir yapar.',
-      'Repeating the photo from the same angle makes before/after tracking more reliable.',
+        ),
+      ],
     );
   }
 }
@@ -1056,44 +1149,6 @@ class _SafetyResultLine extends StatelessWidget {
   }
 }
 
-class _TrustMetric extends StatelessWidget {
-  const _TrustMetric({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.mint.withValues(alpha: .56),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: AppColors.green),
-            const SizedBox(height: 8),
-            Text(label, style: AppTextStyles.muted.copyWith(fontSize: 12)),
-            const SizedBox(height: 3),
-            Text(
-              value,
-              style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w900),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _RiskBadgeCard extends StatelessWidget {
   const _RiskBadgeCard({required this.result});
 
@@ -1102,30 +1157,24 @@ class _RiskBadgeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final badges = _riskBadges(context, result);
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            context.tr('Risk rozetleri', 'Risk Badges'),
-            style: AppTextStyles.section,
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: badges
-                .map(
-                  (badge) => _RiskBadge(
-                    icon: badge.icon,
-                    label: badge.label,
-                    color: badge.color,
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _DetailHeading(label: context.tr('Risk işaretleri', 'Risk signals')),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: badges
+              .map(
+                (badge) => _RiskBadge(
+                  icon: badge.icon,
+                  label: badge.label,
+                  color: badge.color,
+                ),
+              )
+              .toList(),
+        ),
+      ],
     );
   }
 
@@ -1250,83 +1299,43 @@ class _RiskBadge extends StatelessWidget {
 }
 
 class _PremiumAnalysisCard extends StatelessWidget {
-  const _PremiumAnalysisCard({required this.result});
+  const _PremiumAnalysisCard({required this.isPremium});
 
-  final DiagnosisResult result;
+  final bool isPremium;
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: EntitlementService().getCurrentPlan(),
-      builder: (context, snapshot) {
-        final isPremium = snapshot.data?.isPremium == true;
-        final proAnalysis =
-            result.analysisTier == 'pro' || result.analysisTier == 'premium';
-        final title = proAnalysis
-            ? context.tr(
-                'Premium detaylı analiz aktif',
-                'Premium detailed analysis active',
-              )
-            : isPremium
-            ? context.tr(
-                'Premium bakım planın aktif',
-                'Your Premium care plan is active',
-              )
-            : context.tr(
-                'Premium ile daha fazla bakım hakkı',
-                'Get more care access with Premium',
-              );
-        final text = proAnalysis
-            ? context.tr(
-                'Bu analiz görsel kanıtlar, bitkiye özel bakım arşivi ve akıllı hatırlatma planıyla hazırlandı.',
-                'This analysis was prepared with visual evidence, plant-specific care archive and smart reminders.',
-              )
-            : isPremium
-            ? context.tr(
-                'Premium hesabında geniş bakım arşivi, reklamsız kullanım ve akıllı hatırlatmalar aktiftir.',
-                'Your Premium account includes the extended care archive, ad-free use and smart reminders.',
-              )
-            : context.tr(
-                'Premium kullanıcılar daha fazla analiz hakkı, reklamsız kullanım ve akıllı hatırlatmalardan yararlanır.',
-                'Premium users get more analysis credits, ad-free use and smart reminders.',
-              );
-        return AppCard(
-          color: isPremium
-              ? AppColors.darkGreen
-              : AppColors.warmCream.withValues(alpha: .92),
-          child: Row(
-            children: [
-              Icon(
-                isPremium
-                    ? Icons.workspace_premium_outlined
-                    : Icons.auto_awesome_outlined,
-                color: isPremium ? Colors.white : AppColors.darkGreen,
+    if (!isPremium) {
+      return const SizedBox.shrink();
+    }
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: .22)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.workspace_premium_outlined,
+              color: Colors.white,
+              size: 16,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              context.tr('Premium analiz', 'Premium analysis'),
+              style: AppTextStyles.muted.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: AppTextStyles.section.copyWith(
-                        color: isPremium ? Colors.white : AppColors.darkGreen,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      text,
-                      style: AppTextStyles.muted.copyWith(
-                        color: isPremium ? Colors.white70 : AppColors.muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1338,65 +1347,53 @@ class _CareProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tips = profile.specialTips.take(3).toList();
     final avoid = profile.avoid.take(3).toList();
-    return AppCard(
-      color: AppColors.mint.withValues(alpha: .82),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.local_florist_outlined, color: AppColors.green),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  context.tr('Bakım profili', 'Care Profile'),
-                  style: AppTextStyles.section,
-                ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.local_florist_outlined, color: AppColors.green),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                context.tr('Bakım profili', 'Care Profile'),
+                style: AppTextStyles.section,
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _CareProfileRow(
-            icon: Icons.water_drop_outlined,
-            label: context.tr('Sulama', 'Watering'),
-            value:
-                '${profile.watering.soilTrigger} ${profile.watering.intervalText}',
-          ),
-          _CareProfileRow(
-            icon: Icons.wb_sunny_outlined,
-            label: context.tr('Işık', 'Light'),
-            value: profile.light.isEmpty
-                ? context.tr(
-                    'Aydınlık konum önerilir.',
-                    'A bright location is recommended.',
-                  )
-                : profile.light,
-          ),
-          if (profile.watering.note.isNotEmpty)
-            _CareProfileRow(
-              icon: Icons.info_outline,
-              label: context.tr('Not', 'Note'),
-              value: profile.watering.note,
             ),
-          if (tips.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              context.tr('Özel ipuçları', 'Special tips'),
-              style: AppTextStyles.muted,
-            ),
-            const SizedBox(height: 8),
-            ...tips.map((tip) => _Bullet(tip)),
           ],
-          if (avoid.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(context.tr('Kaçın', 'Avoid'), style: AppTextStyles.muted),
-            const SizedBox(height: 8),
-            ...avoid.map((item) => _Bullet(item)),
-          ],
+        ),
+        const SizedBox(height: 12),
+        _CareProfileRow(
+          icon: Icons.water_drop_outlined,
+          label: context.tr('Sulama', 'Watering'),
+          value:
+              '${profile.watering.soilTrigger} ${profile.watering.intervalText}',
+        ),
+        _CareProfileRow(
+          icon: Icons.wb_sunny_outlined,
+          label: context.tr('Işık', 'Light'),
+          value: profile.light.isEmpty
+              ? context.tr(
+                  'Aydınlık konum önerilir.',
+                  'A bright location is recommended.',
+                )
+              : profile.light,
+        ),
+        if (profile.watering.note.isNotEmpty)
+          _CareProfileRow(
+            icon: Icons.info_outline,
+            label: context.tr('Not', 'Note'),
+            value: profile.watering.note,
+          ),
+        PremiumCareTips(profile: profile, isPremiumOverride: true),
+        if (avoid.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(context.tr('Kaçın', 'Avoid'), style: AppTextStyles.muted),
+          const SizedBox(height: 8),
+          ...avoid.map((item) => _Bullet(item)),
         ],
-      ),
+      ],
     );
   }
 }
@@ -1442,10 +1439,68 @@ class _CareProfileRow extends StatelessWidget {
   }
 }
 
-class _ResultSummaryCard extends StatelessWidget {
-  const _ResultSummaryCard({required this.result});
+class _SafetyAndLimitsSection extends StatelessWidget {
+  const _SafetyAndLimitsSection({
+    required this.result,
+    required this.avoidanceTips,
+  });
 
   final DiagnosisResult result;
+  final List<String> avoidanceTips;
+
+  @override
+  Widget build(BuildContext context) {
+    final confidenceNote = result.confidenceNote?.trim();
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 2),
+        childrenPadding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
+        leading: const Icon(Icons.shield_outlined, color: AppColors.green),
+        title: Text(
+          context.tr('Güvenlik ve analiz notları', 'Safety and analysis notes'),
+          style: AppTextStyles.section,
+        ),
+        subtitle: Text(
+          context.tr(
+            'Güvenli kullanım, kaçınılacaklar ve analizin sınırları',
+            'Safe use, what to avoid and analysis limits',
+          ),
+          style: AppTextStyles.muted,
+        ),
+        shape: const Border(bottom: BorderSide(color: AppColors.border)),
+        collapsedShape: const Border(
+          bottom: BorderSide(color: AppColors.border),
+        ),
+        children: [
+          _DetailHeading(
+            label: context.tr('Kaçınılması gerekenler', 'Avoid these'),
+          ),
+          ...avoidanceTips.map((item) => _Bullet(item)),
+          const SizedBox(height: 6),
+          _DetailHeading(
+            label: context.tr('Güvenli kullanım notu', 'Safety note'),
+          ),
+          Text(result.safetyNote, style: AppTextStyles.body),
+          if (confidenceNote != null && confidenceNote.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _DetailHeading(
+              label: context.tr('Analizin sınırları', 'Analysis limits'),
+            ),
+            Text(confidenceNote, style: AppTextStyles.body),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultSummaryCard extends StatelessWidget {
+  const _ResultSummaryCard({required this.result, required this.isPremium});
+
+  final DiagnosisResult result;
+  final bool isPremium;
 
   @override
   Widget build(BuildContext context) {
@@ -1476,10 +1531,13 @@ class _ResultSummaryCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  result.plantName,
+                  result.isPlant
+                      ? context.tr('Sağlık özeti', 'Health summary')
+                      : context.tr('Fotoğraf sonucu', 'Photo result'),
                   style: AppTextStyles.title.copyWith(color: Colors.white),
                 ),
               ),
+              _PremiumAnalysisCard(isPremium: isPremium),
             ],
           ),
           const SizedBox(height: 16),
@@ -1496,6 +1554,11 @@ class _ResultSummaryCard extends StatelessWidget {
                       color: tone,
                     ),
                     _SummaryPill(label: result.status, color: tone),
+                    _SummaryPill(
+                      label:
+                          '${context.tr('Güven', 'Confidence')}: ${_analysisConfidence(context, result)}',
+                      color: AppColors.lightGreen,
+                    ),
                     _SummaryPill(
                       label: result.needsCloseup
                           ? context.tr(
@@ -1530,6 +1593,24 @@ class _ResultSummaryCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _analysisConfidence(BuildContext context, DiagnosisResult result) {
+  if (result.needsCloseup) {
+    return context.tr('Orta', 'Medium');
+  }
+  final topConfidence = result.causes.isEmpty
+      ? 0
+      : result.causes
+            .map((cause) => cause.percent)
+            .reduce((a, b) => a > b ? a : b);
+  if (topConfidence >= 70) {
+    return context.tr('Yüksek', 'High');
+  }
+  if (topConfidence >= 45) {
+    return context.tr('Orta', 'Medium');
+  }
+  return context.tr('Düşük', 'Low');
 }
 
 class _SummaryPill extends StatelessWidget {
@@ -1703,30 +1784,6 @@ class _PlantFallback extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: const Icon(Icons.local_florist, color: AppColors.green, size: 74),
-    );
-  }
-}
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.title, required this.children});
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: AppCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: AppTextStyles.section),
-            const SizedBox(height: 10),
-            ...children,
-          ],
-        ),
-      ),
     );
   }
 }

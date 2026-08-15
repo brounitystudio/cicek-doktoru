@@ -75,7 +75,12 @@ class NotificationService {
     await _configureDeviceTimezone();
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const settings = InitializationSettings(android: android);
+    const ios = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const settings = InitializationSettings(android: android, iOS: ios);
     await _plugin.initialize(
       settings: settings,
       onDidReceiveNotificationResponse: _onNotificationResponse,
@@ -160,7 +165,9 @@ class NotificationService {
       ).httpsCallable('registerDeviceToken');
       await callable.call<Map<String, dynamic>>({
         'token': token,
-        'platform': 'android',
+        'platform': defaultTargetPlatform == TargetPlatform.iOS
+            ? 'ios'
+            : 'android',
       });
     } catch (error) {
       debugPrint('Push token backend registration failed: $error');
@@ -221,6 +228,13 @@ class NotificationService {
             channelDescription: 'Sulama, kontrol ve bitki bakım günleri',
             importance: Importance.high,
             priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+            presentBanner: true,
+            presentList: true,
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -334,6 +348,13 @@ class NotificationService {
           channelDescription: 'Tahmini sulama zamanı hatırlatmaları',
           importance: Importance.high,
           priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+          presentBanner: true,
+          presentList: true,
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,

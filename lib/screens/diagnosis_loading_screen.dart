@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../data/plant_trivia.dart';
+import '../services/analytics_service.dart';
 import '../services/diagnosis_service.dart';
 import '../services/language_service.dart';
 import '../theme/app_colors.dart';
@@ -67,6 +68,11 @@ class _DiagnosisLoadingScreenState extends State<DiagnosisLoadingScreen>
             ),
         requestId: _requestId,
       );
+      unawaited(
+        AnalyticsService.instance.logDiagnosisCompleted(
+          analysisTier: result.analysisTier,
+        ),
+      );
       await Future<void>.delayed(const Duration(milliseconds: 900));
       if (!mounted) {
         return;
@@ -84,6 +90,28 @@ class _DiagnosisLoadingScreenState extends State<DiagnosisLoadingScreen>
         return;
       }
       if (retry) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      context.tr(
+                        '+1 analiz hakkı verildi. Teşhis devam ediyor.',
+                        '+1 analysis credit granted. Diagnosis is continuing.',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
         unawaited(_diagnose());
       } else {
         Navigator.of(context).pop();

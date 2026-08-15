@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../services/analytics_service.dart';
 import '../services/diagnosis_service.dart';
 import '../services/language_service.dart';
 import '../theme/app_colors.dart';
@@ -118,6 +120,11 @@ class _ScanPlantScreenState extends State<ScanPlantScreen> {
       imagePaths: _images.map((image) => image.path).toList(growable: false),
     );
     setState(() => _openingDiagnosis = true);
+    unawaited(
+      AnalyticsService.instance.logDiagnosisStarted(
+        photoCount: input.imagePaths.length,
+      ),
+    );
     Navigator.of(context)
         .pushNamed(DiagnosisLoadingScreen.routeName, arguments: input)
         .whenComplete(() {

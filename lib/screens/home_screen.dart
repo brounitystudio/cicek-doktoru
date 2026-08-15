@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
@@ -70,6 +72,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 6),
               const DecorativeHeroCard(),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: _HomeAdBanner(),
+              ),
               const SizedBox(height: 20),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -129,11 +135,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: _HomeAdBanner(),
-              ),
               const SizedBox(height: 22),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -175,35 +176,69 @@ class _HomeAdBannerState extends State<_HomeAdBanner> {
   bool _isLoaded = false;
   bool _shouldShow = false;
   bool _loadFailed = false;
+  bool _loadInProgress = false;
+  bool _adsAllowed = false;
 
   @override
   void initState() {
     super.initState();
+    EntitlementService.revision.addListener(_handleEntitlementsChanged);
     _loadIfAllowed();
+  }
+
+  void _handleEntitlementsChanged() {
+    if (mounted) {
+      unawaited(_loadIfAllowed());
+    }
   }
 
   Future<void> _loadIfAllowed() async {
     if (AdConfig.adsDisabled) {
+      _hideBanner();
       return;
     }
 
     try {
       final plan = await EntitlementService().getCurrentPlan();
-      if (!mounted || plan.adsDisabled) {
+      if (!mounted) {
+        return;
+      }
+      if (plan.adsDisabled) {
+        _hideBanner();
         return;
       }
     } catch (_) {
       if (!mounted) {
         return;
       }
-    }
-
-    setState(() => _shouldShow = true);
-
-    if (!await AdService.instance.initialize()) {
+      _hideBanner();
       return;
     }
-    if (!mounted) {
+
+    _adsAllowed = true;
+    if (_isLoaded || _loadInProgress) {
+      if (!_shouldShow) {
+        setState(() => _shouldShow = true);
+      }
+      return;
+    }
+
+    setState(() {
+      _shouldShow = true;
+      _loadInProgress = true;
+      _loadFailed = false;
+    });
+
+    if (!await AdService.instance.initialize()) {
+      if (mounted) {
+        setState(() {
+          _loadInProgress = false;
+          _loadFailed = true;
+        });
+      }
+      return;
+    }
+    if (!mounted || !_adsAllowed) {
       return;
     }
 
@@ -213,35 +248,64 @@ class _HomeAdBannerState extends State<_HomeAdBanner> {
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (ad) {
-          if (!mounted) {
+          if (!mounted || !_adsAllowed) {
             ad.dispose();
             return;
           }
           setState(() {
             _bannerAd = ad as BannerAd;
             _isLoaded = true;
+            _loadInProgress = false;
             _loadFailed = false;
           });
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
-          if (!mounted) {
+          if (!mounted || !_adsAllowed) {
             return;
           }
           setState(() {
             _bannerAd = null;
             _isLoaded = false;
+            _loadInProgress = false;
             _loadFailed = true;
           });
         },
       ),
     );
 
-    await banner.load();
+    try {
+      await banner.load();
+    } catch (_) {
+      banner.dispose();
+      if (mounted && _adsAllowed) {
+        setState(() {
+          _loadInProgress = false;
+          _loadFailed = true;
+        });
+      }
+    }
+  }
+
+  void _hideBanner() {
+    _adsAllowed = false;
+    final banner = _bannerAd;
+    _bannerAd = null;
+    banner?.dispose();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isLoaded = false;
+      _shouldShow = false;
+      _loadFailed = false;
+      _loadInProgress = false;
+    });
   }
 
   @override
   void dispose() {
+    EntitlementService.revision.removeListener(_handleEntitlementsChanged);
     _bannerAd?.dispose();
     super.dispose();
   }
@@ -254,44 +318,50 @@ class _HomeAdBannerState extends State<_HomeAdBanner> {
     }
 
     if (!_isLoaded || banner == null) {
-      return _BannerShell(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (!_loadFailed) ...[
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppColors.green,
+      return Padding(
+        padding: const EdgeInsets.only(top: 14),
+        child: _BannerShell(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (!_loadFailed) ...[
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.green,
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Text(
+                _loadFailed
+                    ? context.tr(
+                        'Sponsor alanı hazırlanıyor',
+                        'Sponsor area is loading',
+                      )
+                    : context.tr('Reklam yükleniyor', 'Ad is loading'),
+                style: AppTextStyles.muted.copyWith(
+                  color: AppColors.darkGreen,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(width: 10),
             ],
-            Text(
-              _loadFailed
-                  ? context.tr(
-                      'Sponsor alanı hazırlanıyor',
-                      'Sponsor area is loading',
-                    )
-                  : context.tr('Reklam yükleniyor', 'Ad is loading'),
-              style: AppTextStyles.muted.copyWith(
-                color: AppColors.darkGreen,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
+          ),
         ),
       );
     }
 
-    return Align(
-      alignment: Alignment.center,
-      child: _BannerShell(
-        width: banner.size.width.toDouble(),
-        height: banner.size.height.toDouble(),
-        child: AdWidget(ad: banner),
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Align(
+        alignment: Alignment.center,
+        child: _BannerShell(
+          width: banner.size.width.toDouble(),
+          height: banner.size.height.toDouble(),
+          child: AdWidget(ad: banner),
+        ),
       ),
     );
   }
