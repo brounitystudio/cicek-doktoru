@@ -13,6 +13,7 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../models/care_task.dart';
+import 'language_service.dart';
 
 enum NotificationPermissionState { authorized, denied, notDetermined }
 
@@ -44,6 +45,26 @@ class NotificationService {
   static const _wateringCalculatorRemindersKey =
       'watering_calculator_reminders';
   static const _scheduledCareReminderIdsKey = 'scheduled_care_reminder_ids';
+  static const _scheduledEngagementReminderIdsKey =
+      'scheduled_engagement_reminder_ids_v1';
+
+  Future<bool> ensureAutomaticReminders(List<CareTask> tasks) async {
+    await initialize();
+    var permission = await permissionState();
+    if (permission == NotificationPermissionState.notDetermined) {
+      final granted = await requestPermission();
+      permission = granted
+          ? NotificationPermissionState.authorized
+          : NotificationPermissionState.denied;
+    }
+    if (permission != NotificationPermissionState.authorized) {
+      return false;
+    }
+
+    await scheduleCareReminders(tasks);
+    await _scheduleEngagementReminders();
+    return true;
+  }
 
   Future<void> initialize({
     ValueChanged<NotificationNavigationIntent>? onNotificationTap,
@@ -328,6 +349,118 @@ class NotificationService {
     }
   }
 
+  Future<void> _scheduleEngagementReminders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final previousIds =
+        prefs.getStringList(_scheduledEngagementReminderIdsKey) ?? const [];
+    for (final value in previousIds) {
+      final id = int.tryParse(value);
+      if (id != null) {
+        await _plugin.cancel(id: id);
+      }
+    }
+
+    final english = LanguageService.instance.isEnglish;
+    final bodies = english
+        ? const [
+            'How are your plants today? Take a quick look at their leaves and soil.',
+            'What does your plant need? Take a photo and find out now.',
+            'Is the soil dry? Check the moisture before watering.',
+            'A short care check can help you notice plant stress early.',
+          ]
+        : const [
+            'Çiçekleriniz bugün nasıl? Yapraklarını ve toprağını kısaca kontrol edin.',
+            'Bitkinizin neye ihtiyacı var? Fotoğrafını çekip hemen öğrenin.',
+            'Toprak kurudu mu? Sulamadan önce nemini kontrol edin.',
+            'Kısa bir bakım kontrolü, bitki stresini erken fark etmenizi sağlar.',
+          ];
+    final now = tz.TZDateTime.now(tz.local);
+    final threshold = now.add(const Duration(minutes: 2));
+    final scheduledIds = <int>[];
+
+    for (var dayOffset = 0; dayOffset < 14; dayOffset++) {
+      final day = now.add(Duration(days: dayOffset));
+      final morning = tz.TZDateTime(
+        tz.local,
+        day.year,
+        day.month,
+        day.day,
+        11,
+        15,
+      );
+      if (morning.isAfter(threshold)) {
+        final id = _engagementNotificationId(morning, 1);
+        await _scheduleEngagementNotification(
+          id: id,
+          scheduledDate: morning,
+          body: bodies[dayOffset % bodies.length],
+          english: english,
+        );
+        scheduledIds.add(id);
+      }
+
+      if (dayOffset.isOdd) {
+        final evening = tz.TZDateTime(
+          tz.local,
+          day.year,
+          day.month,
+          day.day,
+          19,
+          15,
+        );
+        if (evening.isAfter(threshold)) {
+          final id = _engagementNotificationId(evening, 2);
+          await _scheduleEngagementNotification(
+            id: id,
+            scheduledDate: evening,
+            body: bodies[(dayOffset + 1) % bodies.length],
+            english: english,
+          );
+          scheduledIds.add(id);
+        }
+      }
+    }
+
+    await prefs.setStringList(
+      _scheduledEngagementReminderIdsKey,
+      scheduledIds.map((id) => '$id').toList(),
+    );
+  }
+
+  Future<void> _scheduleEngagementNotification({
+    required int id,
+    required tz.TZDateTime scheduledDate,
+    required String body,
+    required bool english,
+  }) {
+    return _plugin.zonedSchedule(
+      id: id,
+      title: english ? 'Plant Doctor' : 'Çiçek Doktoru',
+      body: body,
+      scheduledDate: scheduledDate,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          'plant_check_reminders',
+          english ? 'Plant check reminders' : 'Bitki kontrol hatırlatmaları',
+          channelDescription: english
+              ? 'Gentle reminders to check your plants'
+              : 'Bitkilerinizi kontrol etmeniz için hafif hatırlatmalar',
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+          presentBanner: true,
+          presentList: true,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: jsonEncode({'kind': 'engagement'}),
+    );
+  }
+
   Future<void> _scheduleWateringCalculatorNotification({
     required int id,
     required String plantName,
@@ -429,5 +562,13 @@ class NotificationService {
           return (hash * 41 + unit) & 0x7fffffff;
         })
         .clamp(100000, pow(2, 31).toInt() - 1);
+  }
+
+  int _engagementNotificationId(tz.TZDateTime date, int slot) {
+    return 700000000 +
+        (date.year % 100) * 100000 +
+        date.month * 1000 +
+        date.day * 10 +
+        slot;
   }
 }

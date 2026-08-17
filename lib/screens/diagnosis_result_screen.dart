@@ -268,6 +268,7 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
         _isSaving = false;
         _savedPlantId = plant.id;
       });
+      unawaited(_refreshCareRemindersSilently());
       final openPlant = await _showSavedSheet(context);
       if (!context.mounted) {
         return;
@@ -315,6 +316,15 @@ class _DiagnosisResultScreenState extends State<DiagnosisResultScreen> {
           ),
         ),
       );
+    }
+  }
+
+  Future<void> _refreshCareRemindersSilently() async {
+    try {
+      final tasks = await PlantRepository().getCareTasks();
+      await NotificationService.instance.ensureAutomaticReminders(tasks);
+    } catch (error) {
+      debugPrint('Automatic care reminder refresh skipped: $error');
     }
   }
 
@@ -836,7 +846,6 @@ class _SevenDayPlanCard extends StatelessWidget {
               PremiumCareTips(
                 profile: result.careProfile!,
                 isPremiumOverride: false,
-                showLockedPreview: false,
               ),
             if (!isPremium && entitlementLoaded)
               _PremiumPlanUnlock(hiddenItems: hiddenPlan),

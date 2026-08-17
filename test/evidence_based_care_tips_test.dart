@@ -22,9 +22,12 @@ void main() {
 
     final tips = evidenceBasedCareTipsFor(profile);
 
-    expect(tips, hasLength(2));
+    expect(tips, hasLength(5));
     expect(tips.first.turkish, contains('komposta'));
     expect(tips.first.turkish, contains('tuz'));
+    expect(tips[1].turkish, contains('Bal'));
+    expect(tips[2].turkish, contains('30-45 dakika'));
+    expect(tips[3].turkish, contains('1-2 hafta'));
     expect(tips.last.turkish, contains('nemli bir bez'));
     expect(tips.every((tip) => tip.sourceUrl.startsWith('https://')), isTrue);
   });

@@ -8,10 +8,9 @@ class PremiumPromptService {
 
   static final PremiumPromptService instance = PremiumPromptService._();
 
-  static const _postDiagnosisShownDateKey =
-      'premium_post_diagnosis_prompt_date_v1';
+  static const _dailyOfferShownDateKey = 'premium_daily_offer_date_v1';
 
-  Future<bool> shouldShowAfterSuccessfulDiagnosis() async {
+  Future<bool> shouldShowDailyOffer() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous) {
       return false;
@@ -24,10 +23,10 @@ class PremiumPromptService {
 
     final prefs = await SharedPreferences.getInstance();
     final today = _todayKey();
-    if (prefs.getString(_postDiagnosisShownDateKey) == today) {
+    if (prefs.getString(_dailyOfferShownDateKey) == today) {
       return false;
     }
-    await prefs.setString(_postDiagnosisShownDateKey, today);
+    await prefs.setString(_dailyOfferShownDateKey, today);
     return true;
   }
 

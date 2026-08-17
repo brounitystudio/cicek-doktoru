@@ -41,7 +41,7 @@ void main() {
     await tester.pumpWidget(app(isPremium: false));
 
     expect(find.text('Yaprak yırtılması normal olabilir.'), findsOneWidget);
-    expect(find.text('4 özel ipucu daha'), findsOneWidget);
+    expect(find.text('7 özel ipucu daha'), findsOneWidget);
     expect(find.text('Premium ile ipuçlarını aç'), findsOneWidget);
     final blurredTip = find.text('Yüksek nem gelişimi artırır.');
     expect(blurredTip, findsOneWidget);
@@ -59,6 +59,7 @@ void main() {
     expect(find.text('Yüksek nem gelişimi artırır.'), findsOneWidget);
     expect(find.text('Kışın ışık azalınca sulamayı düşür.'), findsOneWidget);
     expect(find.textContaining('Çay/kahve posasını'), findsOneWidget);
+    expect(find.textContaining('Bal veya şekerli suyu'), findsOneWidget);
     expect(find.textContaining('University of Minnesota'), findsOneWidget);
     expect(find.text('Premium ile ipuçlarını aç'), findsNothing);
   });

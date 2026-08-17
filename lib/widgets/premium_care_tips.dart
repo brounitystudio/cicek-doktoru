@@ -28,15 +28,9 @@ class PremiumCareTips extends StatelessWidget {
     final speciesTips = profile.specialTips
         .where((tip) => tip.trim().isNotEmpty)
         .toList();
-    if (speciesTips.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
     final evidenceTips = evidenceBasedCareTipsFor(profile);
-    final premiumTips = <_VisibleCareTip>[
-      ...speciesTips
-          .skip(1)
-          .map((tip) => _VisibleCareTip(turkish: tip, english: tip)),
+    final allTips = <_VisibleCareTip>[
+      ...speciesTips.map((tip) => _VisibleCareTip(turkish: tip, english: tip)),
       ...evidenceTips.map(
         (tip) => _VisibleCareTip(
           turkish: tip.turkish,
@@ -45,6 +39,11 @@ class PremiumCareTips extends StatelessWidget {
         ),
       ),
     ];
+    if (allTips.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final freeTip = allTips.first;
+    final premiumTips = allTips.skip(1).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,7 +54,10 @@ class PremiumCareTips extends StatelessWidget {
           style: AppTextStyles.muted,
         ),
         const SizedBox(height: 8),
-        _TipLine(text: speciesTips.first, icon: Icons.lightbulb_outline),
+        _TipLine(
+          text: context.tr(freeTip.turkish, freeTip.english),
+          icon: Icons.lightbulb_outline,
+        ),
         if (isPremiumOverride case final isPremium?)
           isPremium
               ? _PremiumTipsOpen(tips: premiumTips)
@@ -195,6 +197,14 @@ class _PremiumTipsLocked extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                context.tr(
+                  'Ev tipi karışımlar, sulama ve bitkiye özel bakım ayrıntıları Premium’da.',
+                  'Home-remedy guidance, watering and plant-specific care details are in Premium.',
+                ),
+                style: AppTextStyles.muted.copyWith(fontSize: 12),
               ),
               const SizedBox(height: 10),
               SizedBox(

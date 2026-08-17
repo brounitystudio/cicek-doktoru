@@ -121,8 +121,8 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       '7-day plan and Premium care insights',
                     ),
                     context.tr(
-                      'Bakım takvimi ve hatırlatıcılar',
-                      'Care calendar and reminders',
+                      'Bitkiye özel ayrıntılı bakım profili',
+                      'Detailed plant-specific care profile',
                     ),
                   ],
                   onPressed: monthly == null || _busy
@@ -152,8 +152,8 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       'Additional possible causes, care insights and the 7-day plan',
                     ),
                     context.tr(
-                      'Karşılaştırmalı gelişim takibi ve hatırlatmalar',
-                      'Comparative progress tracking and reminders',
+                      'Karşılaştırmalı gelişim takibi ve özel bakım profili',
+                      'Comparative progress tracking and a tailored care profile',
                     ),
                     context.tr(
                       '12 aylık abonelik; iptal edilene kadar yıllık yenilenir',
@@ -206,6 +206,12 @@ class _PremiumScreenState extends State<PremiumScreen> {
                           'Terms of Use (EULA)',
                         ),
                       ),
+                    ),
+                    TextButton(
+                      onPressed: () => _openLegalLink(
+                        'https://brounitystudio.github.io/cicek-doktoru/support.html',
+                      ),
+                      child: Text(context.tr('Destek', 'Support')),
                     ),
                   ],
                 ),

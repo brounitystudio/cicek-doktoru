@@ -171,18 +171,16 @@ export class EntitlementService {
       }
 
       const rewardCredits = entitlements.rewardCredits + 1;
-      const update: Record<string, unknown> = {
+      const update: Record<string, unknown> = snapshot.exists ? {} : {
         ...freeDefaults(entitlements.dailyFreeResetDate, entitlements.premiumResetMonth),
-        ...entitlements,
+        createdAt: Timestamp.now(),
+      };
+      Object.assign(update, {
         rewardCredits,
         rewardCreditsEarnedToday: entitlements.rewardCreditsEarnedToday + 1,
         rewardCreditsResetDate: entitlements.rewardCreditsResetDate,
         updatedAt: FieldValue.serverTimestamp(),
-      };
-
-      if (!snapshot.exists) {
-        update.createdAt = Timestamp.now();
-      }
+      });
       transaction.set(userRef, update, {merge: true});
       return {success: true, rewardCredits};
     });

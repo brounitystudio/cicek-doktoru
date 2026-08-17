@@ -90,28 +90,10 @@ class _DiagnosisLoadingScreenState extends State<DiagnosisLoadingScreen>
         return;
       }
       if (retry) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      context.tr(
-                        '+1 analiz hakkı verildi. Teşhis devam ediyor.',
-                        '+1 analysis credit granted. Diagnosis is continuing.',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
+        await _showRewardGrantedDialog();
+        if (!mounted) {
+          return;
+        }
         unawaited(_diagnose());
       } else {
         Navigator.of(context).pop();
@@ -156,6 +138,34 @@ class _DiagnosisLoadingScreenState extends State<DiagnosisLoadingScreen>
         Navigator.of(context).pop();
       }
     }
+  }
+
+  Future<void> _showRewardGrantedDialog() {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(
+          Icons.check_circle_rounded,
+          color: AppColors.green,
+          size: 44,
+        ),
+        title: Text(context.tr('Ödül onaylandı', 'Reward confirmed')),
+        content: Text(
+          context.tr(
+            '+1 analiz hakkı verildi. Şimdi analizine devam edebilirsin.',
+            '+1 analysis credit was granted. You can now continue your analysis.',
+          ),
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(context.tr('Analize devam et', 'Continue analysis')),
+          ),
+        ],
+      ),
+    );
   }
 
   String _newRequestId() {

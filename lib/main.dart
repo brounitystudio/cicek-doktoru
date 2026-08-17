@@ -31,8 +31,11 @@ import 'services/firebase_bootstrap.dart';
 import 'services/language_service.dart';
 import 'services/notification_service.dart';
 import 'services/plant_repository.dart';
+import 'services/premium_prompt_service.dart';
 import 'services/purchase_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/paywall_bottom_sheet.dart';
+import 'widgets/persistent_banner_ad.dart';
 import 'widgets/premium_bottom_nav.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
@@ -197,6 +200,8 @@ class _MainShellState extends State<MainShell> {
   int _index = 0;
   bool _notificationArgsApplied = false;
   bool _initialAnalyticsLogged = false;
+  Timer? _automaticReminderTimer;
+  Timer? _premiumOfferTimer;
 
   List<Widget> _pages = const [];
 
@@ -211,6 +216,66 @@ class _MainShellState extends State<MainShell> {
       SettingsScreen(),
     ];
     unawaited(AdService.instance.registerAuthenticatedLaunch());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduleAutomaticReminderSetup(const Duration(seconds: 8));
+      _schedulePremiumOfferAttempt(const Duration(seconds: 25));
+    });
+  }
+
+  void _scheduleAutomaticReminderSetup(Duration delay) {
+    _automaticReminderTimer?.cancel();
+    _automaticReminderTimer = Timer(
+      delay,
+      () => unawaited(_configureAutomaticReminders()),
+    );
+  }
+
+  Future<void> _configureAutomaticReminders() async {
+    if (!mounted) return;
+    if (ModalRoute.of(context)?.isCurrent != true) {
+      _scheduleAutomaticReminderSetup(const Duration(minutes: 1));
+      return;
+    }
+    try {
+      final tasks = await PlantRepository().getCareTasks();
+      await NotificationService.instance.ensureAutomaticReminders(tasks);
+    } catch (error) {
+      debugPrint('Automatic reminders skipped: $error');
+    }
+  }
+
+  void _schedulePremiumOfferAttempt(Duration delay) {
+    _premiumOfferTimer?.cancel();
+    _premiumOfferTimer = Timer(
+      delay,
+      () => unawaited(_maybeShowPremiumOffer()),
+    );
+  }
+
+  Future<void> _maybeShowPremiumOffer() async {
+    if (!mounted) return;
+    if (ModalRoute.of(context)?.isCurrent != true) {
+      _schedulePremiumOfferAttempt(const Duration(minutes: 1));
+      return;
+    }
+    try {
+      final shouldShow = await PremiumPromptService.instance
+          .shouldShowDailyOffer();
+      if (!mounted || !shouldShow) return;
+      final openPremium = await showDailyPremiumOfferBottomSheet(context);
+      if (mounted && openPremium) {
+        await Navigator.of(context).pushNamed(PremiumScreen.routeName);
+      }
+    } catch (error) {
+      debugPrint('Daily Premium offer skipped: $error');
+    }
+  }
+
+  @override
+  void dispose() {
+    _automaticReminderTimer?.cancel();
+    _premiumOfferTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -222,7 +287,7 @@ class _MainShellState extends State<MainShell> {
     _notificationArgsApplied = true;
     final intent = ModalRoute.of(context)?.settings.arguments;
     if (intent is NotificationNavigationIntent) {
-      _index = 3;
+      _index = intent.isCareReminder ? 3 : 0;
       _pages = [
         const HomeScreen(),
         const ScanPlantScreen(),
@@ -243,22 +308,27 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
       body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: PremiumBottomNav(
-        selectedIndex: _index,
-        onSelected: (value) {
-          if (value == 2) {
-            PlantRepository.plantsRevision.value++;
-          }
-          if (value == 4) {
-            EntitlementService.notifyChanged();
-          }
-          if (value != _index) {
-            unawaited(AnalyticsService.instance.logSectionOpened(value));
-          }
-          setState(() => _index = value);
-        },
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const PersistentBannerAd(),
+          PremiumBottomNav(
+            selectedIndex: _index,
+            onSelected: (value) {
+              if (value == 2) {
+                PlantRepository.plantsRevision.value++;
+              }
+              if (value == 4) {
+                EntitlementService.notifyChanged();
+              }
+              if (value != _index) {
+                unawaited(AnalyticsService.instance.logSectionOpened(value));
+              }
+              setState(() => _index = value);
+            },
+          ),
+        ],
       ),
     );
   }

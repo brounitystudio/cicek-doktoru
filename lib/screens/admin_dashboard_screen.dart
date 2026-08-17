@@ -15,7 +15,9 @@ class AdminDashboardScreen extends StatefulWidget {
   static const ownerEmail = 'brounitystudio@gmail.com';
 
   static bool canOpen() {
-    final email = FirebaseAuth.instance.currentUser?.email?.toLowerCase();
+    final email = FirebaseAuth.instance.currentUser?.email
+        ?.trim()
+        .toLowerCase();
     return email == ownerEmail;
   }
 
@@ -41,7 +43,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _usersFuture = _service.listUsers();
+    _usersFuture = AdminDashboardScreen.canOpen()
+        ? _service.listUsers()
+        : Future.value(const []);
   }
 
   @override

@@ -14,7 +14,7 @@ class EvidenceBasedCareTip {
   final String sourceUrl;
 }
 
-/// Source-backed home-care notes reviewed on 2026-08-14.
+/// Source-backed home-care notes reviewed on 2026-08-17.
 ///
 /// The plant library already contains species-specific tips. These notes add a
 /// practical evidence layer without presenting popular kitchen remedies as
@@ -31,6 +31,33 @@ List<EvidenceBasedCareTip> evidenceBasedCareTipsFor(PlantCareProfile profile) {
       sourceName: 'University of Minnesota Extension',
       sourceUrl:
           'https://extension.umn.edu/manage-soil-nutrients/coffee-grounds-eggshells-epsom-salts',
+    ),
+    const EvidenceBasedCareTip(
+      turkish:
+          'Bal veya şekerli suyu bitki besini olarak kullanma. Gerekiyorsa yalnızca etiketli ev bitkisi gübresini büyüme döneminde düşük dozda uygula.',
+      english:
+          'Do not use honey or sugar water as plant food. If needed, use only a labeled houseplant fertilizer at low strength during active growth.',
+      sourceName: 'UConn Home & Garden Education Center',
+      sourceUrl:
+          'https://homegarden-cahnr.media.uconn.edu/wp-content/uploads/sites/3479/2022/08/Houseplant-Fertilization.pdf',
+    ),
+    const EvidenceBasedCareTip(
+      turkish:
+          'Sulamadan 30-45 dakika sonra tabakta veya dış saksıda kalan suyu dök; kökleri bekleyen suyun içinde bırakma.',
+      english:
+          'Empty water left in the saucer or outer pot 30-45 minutes after watering; do not leave roots standing in water.',
+      sourceName: 'Iowa State University Extension',
+      sourceUrl:
+          'https://yardandgarden.extension.iastate.edu/how-to/how-care-houseplants',
+    ),
+    const EvidenceBasedCareTip(
+      turkish:
+          'Yeni aldığın veya zararlı şüphesi olan bitkiyi 1-2 hafta diğerlerinden ayır; yaprak altlarını, gövde birleşimlerini ve saksı kenarlarını kontrol et.',
+      english:
+          'Isolate a new or possibly infested plant for 1-2 weeks; inspect leaf undersides, stem joints and pot edges.',
+      sourceName: 'University of Minnesota Extension',
+      sourceUrl:
+          'https://extension.umn.edu/yard-and-garden-insects/insects-indoor-plants',
     ),
   ];
 

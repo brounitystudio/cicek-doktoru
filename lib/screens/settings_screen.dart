@@ -105,6 +105,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: _UserCard(plan: plan),
                     ),
                     const SizedBox(height: 14),
+                    if (AdminDashboardScreen.canOpen()) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: _AdminAccessCard(
+                          onTap: () => Navigator.of(
+                            context,
+                          ).pushNamed(AdminDashboardScreen.routeName),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     if (!plan.isPremium)
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20),
@@ -238,18 +249,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             subtitle: '+90 850 346 58 09',
                             onTap: () => _openSupportWhatsApp(context),
                           ),
-                          if (AdminDashboardScreen.canOpen())
-                            _SettingsTile(
-                              icon: Icons.admin_panel_settings_outlined,
-                              title: context.tr('Admin Paneli', 'Admin Panel'),
-                              subtitle: context.tr(
-                                'Kullanıcı ve hak yönetimi',
-                                'User and access management',
-                              ),
-                              onTap: () => Navigator.of(
-                                context,
-                              ).pushNamed(AdminDashboardScreen.routeName),
-                            ),
                           _SettingsTile(
                             icon: Icons.logout_rounded,
                             title: context.tr('Çıkış yap', 'Sign out'),
@@ -603,6 +602,107 @@ void _showStatusNotice(
         ),
       ),
     );
+}
+
+class _AdminAccessCard extends StatelessWidget {
+  const _AdminAccessCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.darkGreen, Color(0xFF0E7A56)],
+            ),
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.darkGreen.withValues(alpha: .22),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .14),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.admin_panel_settings_rounded,
+                  color: Colors.white,
+                  size: 29,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFD66B),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        context.tr('SADECE YÖNETİCİ', 'ADMIN ONLY'),
+                        style: AppTextStyles.muted.copyWith(
+                          color: AppColors.darkGreen,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      context.tr(
+                        'Brounity Yönetim Merkezi',
+                        'Brounity Control Center',
+                      ),
+                      style: AppTextStyles.body.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      context.tr(
+                        'Kullanıcıları, Premium haklarını ve bildirimleri yönet.',
+                        'Manage users, Premium access and notifications.',
+                      ),
+                      style: AppTextStyles.muted.copyWith(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _UserCard extends StatelessWidget {
