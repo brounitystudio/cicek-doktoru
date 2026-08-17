@@ -1,6 +1,6 @@
 # Çiçek Doktoru Gizlilik Politikası
 
-Son güncelleme: 15 Ağustos 2026
+Son güncelleme: 17 Ağustos 2026
 
 Çiçek Doktoru, bitki bakımını kolaylaştırmak için Google hesabı, bitki fotoğrafları, bakım cevapları, yapay zeka analiz sonuçları, bakım görevleri, premium durum bilgisi, reklam ödülü, bildirim tokenı ve uygulama kullanım verilerini işleyebilir.
 
@@ -19,7 +19,7 @@ Bu veriler; hesap sürekliliği, teşhis geçmişi, bitki takibi, bakım hatırl
 
 Bitki fotoğrafları ve bakım cevapları, analiz üretmek amacıyla güvenli backend üzerinden yapay zekâ analiz servisine gönderilebilir. Analiz sonuçları kesin teşhis, profesyonel ziraat danışmanlığı veya kimyasal tedavi talimatı değildir.
 
-Uygulama Firebase Authentication, Firestore, Cloud Functions, Storage, Analytics, Firebase Cloud Messaging, Google Sign-In, Google Mobile Ads, Google Play Billing ve yapay zekâ servisleri gibi üçüncü taraf sağlayıcılarla çalışabilir.
+Uygulama Firebase Authentication, Firestore, Cloud Functions, Storage, Analytics, Firebase Cloud Messaging, Google Sign-In, Google Mobile Ads, Google Play Billing, Apple App Store In-App Purchase ve yapay zekâ servisleri gibi üçüncü taraf sağlayıcılarla çalışabilir.
 
 Kullanıcı; hesabı, kayıtlı bitkileri, fotoğrafları, teşhis geçmişi veya bildirim tokenlarıyla ilgili silme/destek talepleri için geliştiriciye ulaşabilir. Hesap ve veri silme adımları için `delete-account.html` sayfası kullanılmalıdır.
 

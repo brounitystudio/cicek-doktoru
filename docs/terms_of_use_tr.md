@@ -1,6 +1,6 @@
 # Çiçek Doktoru Kullanım Şartları
 
-Son güncelleme: 3 Temmuz 2026
+Son güncelleme: 17 Ağustos 2026
 
 Çiçek Doktoru, ev tipi bitki bakımına yardımcı olmak için geliştirilmiş bir mobil uygulamadır. Uygulamadaki yapay zekâ analizleri ve bakım önerileri bilgilendirme amaçlıdır; profesyonel ziraat, botanik veya sağlık danışmanlığı yerine geçmez.
 
@@ -10,7 +10,9 @@ Uygulama; bitki türü tahmini, sağlık skoru, muhtemel bakım hataları, güve
 
 Kimyasal ilaç, pestisit veya riskli uygulamalar için uzman görüşü alınmalıdır. Uygulama kesin hastalık tanısı veya kimyasal tedavi talimatı vermez.
 
-Ücretsiz kullanıcılar belirli analiz, reklam ödülü ve bitki kayıt limitleriyle uygulamayı kullanabilir. Premium haklar satın alma koşullarına, platform kurallarına ve abonelik durumuna bağlıdır. Satın alma ve abonelik işlemleri Google Play Billing üzerinden yürütülür.
+Ücretsiz kullanıcılar belirli analiz, reklam ödülü ve bitki kayıt limitleriyle uygulamayı kullanabilir. Premium haklar satın alma koşullarına, platform kurallarına ve abonelik durumuna bağlıdır. Satın alma ve abonelik işlemleri Android'de Google Play Billing, iOS'ta Apple App Store In-App Purchase üzerinden yürütülür. Abonelikler ilgili mağaza hesabından iptal edilmediği sürece otomatik yenilenebilir.
+
+Apple platformlarında ayrıca Apple Standart Son Kullanıcı Lisans Sözleşmesi (EULA) geçerlidir: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 
 Hizmet; bakım, bağlantı, faturalandırma, üçüncü taraf servis kesintileri veya teknik nedenlerle geçici olarak aksayabilir.
 
