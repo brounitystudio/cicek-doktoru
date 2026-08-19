@@ -58,6 +58,22 @@ class AnalyticsService {
     );
   }
 
+  Future<void> logAdEvent({
+    required String stage,
+    required String format,
+    required String placement,
+    int? errorCode,
+  }) {
+    final parameters = <String, Object>{
+      'reklam_turu': format,
+      'yerlesim': placement,
+    };
+    if (errorCode case final code?) {
+      parameters['hata_kodu'] = code;
+    }
+    return logEvent('cicek_reklam_$stage', parameters: parameters);
+  }
+
   Future<void> logPremiumVerified({
     required String productId,
     required bool restored,

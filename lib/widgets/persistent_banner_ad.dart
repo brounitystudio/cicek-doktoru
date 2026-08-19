@@ -5,6 +5,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../services/ad_config.dart';
 import '../services/ad_service.dart';
+import '../services/analytics_service.dart';
 import '../services/entitlement_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -19,6 +20,7 @@ class PersistentBannerAd extends StatefulWidget {
 class _PersistentBannerAdState extends State<PersistentBannerAd> {
   static final _reservedHeight = AdSize.banner.height.toDouble();
   static const _retryDelay = Duration(seconds: 45);
+  static const _eligibilityRetryDelay = Duration(seconds: 20);
 
   BannerAd? _bannerAd;
   Timer? _retryTimer;
@@ -50,7 +52,8 @@ class _PersistentBannerAdState extends State<PersistentBannerAd> {
         return;
       }
     } catch (_) {
-      _hideBanner();
+      if (!mounted) return;
+      _scheduleEligibilityRetry();
       return;
     }
 
@@ -96,7 +99,21 @@ class _PersistentBannerAdState extends State<PersistentBannerAd> {
             _bannerAd = ad as BannerAd;
             _loadInProgress = false;
           });
+          unawaited(
+            AnalyticsService.instance.logAdEvent(
+              stage: 'yuklendi',
+              format: 'banner',
+              placement: 'alt_sabit',
+            ),
+          );
         },
+        onAdImpression: (_) => unawaited(
+          AnalyticsService.instance.logAdEvent(
+            stage: 'gosterildi',
+            format: 'banner',
+            placement: 'alt_sabit',
+          ),
+        ),
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
           if (!mounted || !_showSlot) return;
@@ -104,12 +121,27 @@ class _PersistentBannerAdState extends State<PersistentBannerAd> {
             _bannerAd = null;
             _loadInProgress = false;
           });
+          unawaited(
+            AnalyticsService.instance.logAdEvent(
+              stage: 'basarisiz',
+              format: 'banner',
+              placement: 'alt_sabit',
+              errorCode: error.code,
+            ),
+          );
           _scheduleRetry();
         },
       ),
     );
 
     try {
+      unawaited(
+        AnalyticsService.instance.logAdEvent(
+          stage: 'istegi',
+          format: 'banner',
+          placement: 'alt_sabit',
+        ),
+      );
       await banner.load();
     } catch (_) {
       banner.dispose();
@@ -117,6 +149,15 @@ class _PersistentBannerAdState extends State<PersistentBannerAd> {
       setState(() => _loadInProgress = false);
       _scheduleRetry();
     }
+  }
+
+  void _scheduleEligibilityRetry() {
+    _retryTimer?.cancel();
+    _retryTimer = Timer(_eligibilityRetryDelay, () {
+      if (mounted) {
+        unawaited(_refreshEligibility());
+      }
+    });
   }
 
   void _scheduleRetry() {

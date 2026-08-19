@@ -215,7 +215,7 @@ class _MainShellState extends State<MainShell> {
       CareCalendarScreen(),
       SettingsScreen(),
     ];
-    unawaited(AdService.instance.registerAuthenticatedLaunch());
+    unawaited(AdService.instance.registerAuthenticatedLaunchAndScheduleAds());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduleAutomaticReminderSetup(const Duration(seconds: 8));
       _schedulePremiumOfferAttempt(const Duration(seconds: 25));
