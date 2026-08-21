@@ -19,6 +19,13 @@ class PremiumScreen extends StatefulWidget {
 }
 
 class _PremiumScreenState extends State<PremiumScreen> {
+  static const _privacyUrl =
+      'https://brounitystudio-d59af.web.app/privacy.html';
+  static const _termsUrl =
+      'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+  static const _supportUrl =
+      'https://brounitystudio-d59af.web.app/support.html';
+
   late Future<PurchaseCatalog> _catalogFuture;
   bool _busy = false;
 
@@ -65,6 +72,13 @@ class _PremiumScreenState extends State<PremiumScreen> {
                   style: AppTextStyles.body,
                 ),
                 const SizedBox(height: 16),
+                _SubscriptionDisclosure(
+                  monthlyPrice: monthly?.price,
+                  yearlyPrice: yearly?.price,
+                  onOpenPrivacy: () => _openLegalLink(_privacyUrl),
+                  onOpenTerms: () => _openLegalLink(_termsUrl),
+                ),
+                const SizedBox(height: 16),
                 if (loading)
                   _StatusCard(
                     icon: Icons.sync,
@@ -77,6 +91,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                   _StatusCard(
                     icon: Icons.error_outline,
                     text: snapshot.error.toString(),
+                    onRetry: _refreshCatalog,
                   )
                 else if (catalog?.storeAvailable != true)
                   _StatusCard(
@@ -85,20 +100,31 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       '$_storeName satın alma servisi bu cihazda hazır değil.',
                       '$_storeName billing is not ready on this device.',
                     ),
+                    onRetry: _refreshCatalog,
                   )
                 else if (catalog!.notFoundIds.isNotEmpty)
                   _StatusCard(
                     icon: Icons.info_outline,
                     text: context.tr(
-                      'Premium satın alma kısa süre içinde aktif olacak.',
-                      'Premium purchase will be available soon.',
+                      'App Store abonelik bilgileri yüklenemedi. Satın almadan önce fiyatı görmek için tekrar dene.',
+                      'App Store subscription information could not be loaded. Try again to view the price before purchasing.',
                     ),
+                    onRetry: _refreshCatalog,
                   ),
                 const SizedBox(height: 16),
                 _PlanCard(
                   title: context.tr('Aylık Premium', 'Monthly Premium'),
                   price: monthly?.price,
                   cadence: context.tr('ay', 'month'),
+                  durationLabel: context.tr('1 ay', '1 month'),
+                  renewalText: context.tr(
+                    'Aylık abonelik; iptal edilene kadar her ay otomatik yenilenir.',
+                    'Monthly subscription; renews every month until cancelled.',
+                  ),
+                  purchaseLabel: context.tr(
+                    'Aylık Premium’u Satın Al',
+                    'Buy Monthly Premium',
+                  ),
                   highlighted: true,
                   product: monthly,
                   busy: _busy,
@@ -134,6 +160,15 @@ class _PremiumScreenState extends State<PremiumScreen> {
                   title: context.tr('Yıllık Premium', 'Yearly Premium'),
                   price: yearly?.price,
                   cadence: context.tr('yıl', 'year'),
+                  durationLabel: context.tr('1 yıl', '1 year'),
+                  renewalText: context.tr(
+                    'Yıllık abonelik; iptal edilene kadar her yıl otomatik yenilenir.',
+                    'Yearly subscription; renews every year until cancelled.',
+                  ),
+                  purchaseLabel: context.tr(
+                    'Yıllık Premium’u Satın Al',
+                    'Buy Yearly Premium',
+                  ),
                   product: yearly,
                   busy: _busy,
                   badge: context.tr('En avantajlı', 'Best value'),
@@ -189,17 +224,13 @@ class _PremiumScreenState extends State<PremiumScreen> {
                   runSpacing: 2,
                   children: [
                     TextButton(
-                      onPressed: () => _openLegalLink(
-                        'https://brounitystudio.github.io/cicek-doktoru/privacy.html',
-                      ),
+                      onPressed: () => _openLegalLink(_privacyUrl),
                       child: Text(
                         context.tr('Gizlilik Politikası', 'Privacy Policy'),
                       ),
                     ),
                     TextButton(
-                      onPressed: () => _openLegalLink(
-                        'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
-                      ),
+                      onPressed: () => _openLegalLink(_termsUrl),
                       child: Text(
                         context.tr(
                           'Kullanım Şartları (EULA)',
@@ -208,9 +239,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: () => _openLegalLink(
-                        'https://brounitystudio.github.io/cicek-doktoru/support.html',
-                      ),
+                      onPressed: () => _openLegalLink(_supportUrl),
                       child: Text(context.tr('Destek', 'Support')),
                     ),
                   ],
@@ -280,6 +309,9 @@ class _PlanCard extends StatelessWidget {
     required this.title,
     required this.price,
     required this.cadence,
+    required this.durationLabel,
+    required this.renewalText,
+    required this.purchaseLabel,
     required this.benefits,
     required this.onPressed,
     required this.busy,
@@ -291,6 +323,9 @@ class _PlanCard extends StatelessWidget {
   final String title;
   final String? price;
   final String cadence;
+  final String durationLabel;
+  final String renewalText;
+  final String purchaseLabel;
   final List<String> benefits;
   final VoidCallback? onPressed;
   final ProductDetails? product;
@@ -337,6 +372,17 @@ class _PlanCard extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            context.tr(
+              'Abonelik süresi: $durationLabel',
+              'Subscription length: $durationLabel',
+            ),
+            style: AppTextStyles.body.copyWith(
+              color: foreground,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 6),
           if (price != null)
@@ -391,10 +437,15 @@ class _PlanCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
+          Text(
+            renewalText,
+            style: AppTextStyles.muted.copyWith(color: muted, height: 1.35),
+          ),
+          const SizedBox(height: 12),
           AppButton(
             label: busy
                 ? context.tr('İşlem sürüyor...', 'Processing...')
-                : context.tr('Satın Al', 'Buy'),
+                : purchaseLabel,
             icon: Icons.workspace_premium,
             onPressed: onPressed,
           ),
@@ -404,11 +455,114 @@ class _PlanCard extends StatelessWidget {
   }
 }
 
+class _SubscriptionDisclosure extends StatelessWidget {
+  const _SubscriptionDisclosure({
+    required this.monthlyPrice,
+    required this.yearlyPrice,
+    required this.onOpenPrivacy,
+    required this.onOpenTerms,
+  });
+
+  final String? monthlyPrice;
+  final String? yearlyPrice;
+  final VoidCallback onOpenPrivacy;
+  final VoidCallback onOpenTerms;
+
+  @override
+  Widget build(BuildContext context) {
+    final monthly = monthlyPrice == null
+        ? context.tr(
+            'Fiyat App Store’dan yükleniyor',
+            'Price is loading from the App Store',
+          )
+        : '$monthlyPrice / ${context.tr('ay', 'month')}';
+    final yearly = yearlyPrice == null
+        ? context.tr(
+            'Fiyat App Store’dan yükleniyor',
+            'Price is loading from the App Store',
+          )
+        : '$yearlyPrice / ${context.tr('yıl', 'year')}';
+
+    return AppCard(
+      color: AppColors.warmCream.withValues(alpha: .92),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.tr('Abonelik bilgileri', 'Subscription information'),
+            style: AppTextStyles.title,
+          ),
+          const SizedBox(height: 10),
+          _DisclosureLine(
+            title: context.tr('Aylık Premium', 'Monthly Premium'),
+            detail: '${context.tr('Süre: 1 ay', 'Length: 1 month')} • $monthly',
+          ),
+          const SizedBox(height: 8),
+          _DisclosureLine(
+            title: context.tr('Yıllık Premium', 'Yearly Premium'),
+            detail: '${context.tr('Süre: 1 yıl', 'Length: 1 year')} • $yearly',
+          ),
+          const SizedBox(height: 12),
+          Text(
+            context.tr(
+              'Ödeme App Store hesabından alınır. Abonelik, mevcut dönemin bitiminden en az 24 saat önce iptal edilmezse aynı süre ve geçerli fiyat üzerinden otomatik yenilenir. Abonelik App Store hesap ayarlarından yönetilebilir ve iptal edilebilir.',
+              'Payment is charged to your App Store account. The subscription renews automatically for the same duration at the then-current price unless cancelled at least 24 hours before the end of the current period. You can manage or cancel it in your App Store account settings.',
+            ),
+            style: AppTextStyles.muted.copyWith(height: 1.4),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 4,
+            runSpacing: 0,
+            children: [
+              TextButton(
+                onPressed: onOpenPrivacy,
+                child: Text(
+                  context.tr('Gizlilik Politikası', 'Privacy Policy'),
+                ),
+              ),
+              TextButton(
+                onPressed: onOpenTerms,
+                child: Text(
+                  context.tr('Kullanım Şartları (EULA)', 'Terms of Use (EULA)'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DisclosureLine extends StatelessWidget {
+  const _DisclosureLine({required this.title, required this.detail});
+
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 2),
+        Text(detail, style: AppTextStyles.muted),
+      ],
+    );
+  }
+}
+
 class _StatusCard extends StatelessWidget {
-  const _StatusCard({required this.icon, required this.text});
+  const _StatusCard({required this.icon, required this.text, this.onRetry});
 
   final IconData icon;
   final String text;
+  final Future<void> Function()? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -428,6 +582,13 @@ class _StatusCard extends StatelessWidget {
               ),
             ),
           ),
+          if (onRetry != null) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => onRetry!(),
+              child: Text(context.tr('Tekrar Dene', 'Try Again')),
+            ),
+          ],
         ],
       ),
     );
